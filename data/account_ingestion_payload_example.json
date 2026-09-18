@@ -1,0 +1,24 @@
+{
+  "company_name": "Example Commercial Cleaning",
+  "website_url": "https://www.examplecleaning.com/",
+  "domain": "examplecleaning.com",
+  "linkedin_url": "https://www.linkedin.com/company/example-commercial-cleaning",
+  "google_maps_url": "https://maps.google.com/...",
+  "country": "United States",
+  "state": "Texas",
+  "city": "Dallas",
+  "street_address": "123 Example St",
+  "postal_code": "75001",
+  "industry": "Janitorial Services",
+  "employee_band": "11-50",
+  "employee_count_estimate": 30,
+  "founded_year": 2010,
+  "company_type": "Privately Held",
+  "discovery_source": "apify_google_maps",
+  "discovery_source_id": "provider-record-id",
+  "source_query": "commercial cleaning Dallas TX",
+  "source_payload": {
+    "rating": 4.8,
+    "reviews": 132
+  }
+}

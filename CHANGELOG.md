@@ -46,3 +46,24 @@ Clay enrichment remains gated behind ICP research and manual company labelling. 
 ### Changed
 - Clay is now an optional provider/tool rather than the source of truth.
 - Project 01 is explicitly a live acquisition MVP with real outbound/results.
+
+## 2026-09-18 â€” Day 2 â€” Account Ingestion V1 Verified
+
+### Added
+- stable `account_key` migration for provider-independent upserts;
+- n8n account-normalization implementation;
+- domain and provider-ID identity strategies;
+- TEST-INGEST-001 verification record.
+
+### Verified
+- first workflow run inserted two controlled records;
+- second identical workflow run kept the row count at two;
+- `created_at` remained stable;
+- `updated_at` advanced;
+- test records were deleted after verification.
+
+### Status
+`GTM 01 - Account Ingestion V1` is PASS.
+
+### Next
+Add processing-run observability before ingesting real commercial-cleaning account data.

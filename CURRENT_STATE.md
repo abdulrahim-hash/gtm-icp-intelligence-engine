@@ -1,74 +1,82 @@
-# Current State
+﻿# Current State
 
 **Date:** 2026-09-18  
 **Project:** Commercial Cleaning GTM Intelligence Engine  
-**Phase:** Transition from research/prototype to production MVP
+**Phase:** Day 2 â€” production data foundation
 
-## Locked business decisions
+## Locked commercial direction
 
-- Target vertical: US commercial cleaning / janitorial.
+- Market: US commercial cleaning / janitorial.
 - Initial customer: established local/regional B2B cleaning operators.
-- Commercial offer: Lead-to-Contract CRM/revenue system.
-- CRM: primarily GoHighLevel.
-- Client-control principle: implement in infrastructure the client can control; retain clients through continuing value rather than technical lock-in.
-- Optional recurring offer: CRM operations / revenue-systems management.
-- Future expansion: once the vertical is repeatable, expand under Saray into broader GTM services and later other verticals.
+- Offer: Commercial Cleaning Lead-to-Contract System.
+- CRM: GoHighLevel.
+- Client-control principle: client retains control of its CRM/data; recurring revenue is earned through ongoing CRM/revenue-system management and improvement.
+- Longer-term: prove this vertical, then expand broader GTM services under Saray.
 
-## Project 01 goal
+## Production stack
 
-Build and launch a customer-acquisition MVP, not merely a scoring demo.
+- discovery: provider-agnostic; first planned source is Google Maps data through Apify;
+- orchestration: n8n;
+- source of truth: Supabase/Postgres;
+- research: company websites/public web + structured AI extraction;
+- scoring: deterministic Fit / Need / Signal / Confidence model;
+- contacts: downstream, only after account qualification;
+- CRM: GoHighLevel;
+- version control: GitHub.
 
-Project 01 should eventually cover:
+Clay was evaluated in EXP-001 but is not a production dependency.
 
-1. account discovery;
-2. hard qualification;
-3. research;
-4. Fit / Need / Signal / Confidence scoring;
-5. decision-maker discovery;
-6. contact verification;
-7. outbound-ready cohort;
-8. GHL opportunity pipeline;
-9. real outreach;
-10. observed results and iteration.
+## Database status
 
-## Clay experiment
+Initial schema validated successfully.
 
-A 10-account Clay prototype was run.
+Tables:
 
-- starting credits: 1,005;
-- credits after test: 970;
-- cost: 35 credits;
-- sample: 10 companies.
+- accounts
+- account_evidence
+- score_components
+- contacts
+- outreach_events
+- experiments
+- processing_runs
 
-The experiment exposed:
-- semantic classification errors;
-- confusion between employee-band and another numeric employee/member field;
-- need for franchise/supplier distinctions;
-- trial/free table-volume constraints;
-- unnecessary vendor dependence for the scale we want.
+Migration `002_add_account_key.sql` also passed.
 
-Decision: Clay will not be the core production architecture.
+## Workflow status
 
-See `experiments/EXP-001_clay_qualification_prototype.md` and `decisions/ADR-005_remove_clay_from_core_architecture.md`.
+### GTM 01 â€” Account Ingestion V1
 
-## Current production architecture
+**STATUS: PASS**
 
-Discovery provider → n8n → Supabase → research → deterministic scoring → contact discovery → outbound → GoHighLevel.
+Verified:
 
-Providers should be replaceable so the system survives changes in pricing, limits, or vendor availability.
+- company-name normalization;
+- website/domain normalization;
+- stable `account_key`;
+- domain identity;
+- discovery-provider-ID fallback identity;
+- Supabase upsert;
+- repeat-run idempotency;
+- zero duplicates on repeated execution;
+- `updated_at` behavior.
+
+Evidence:
+
+`experiments/TEST-INGEST-001_idempotent_account_ingestion.md`
+
+Controlled test rows were deleted after verification.
 
 ## Immediate next milestone
 
-### M1 — Data foundation
+### Workflow 01 V1.1 â€” Production ingestion observability
 
-Build:
-- Supabase project;
-- account table;
-- evidence table;
-- scoring fields;
-- experiment/audit fields;
-- n8n account-ingestion workflow;
-- deduplication by normalized domain/company/location;
-- first 100 real accounts.
+Add:
 
-No API secret is ever committed to GitHub.
+1. processing-run start record;
+2. received/created/updated/rejected counters;
+3. run completion state;
+4. basic failure reporting.
+
+Then connect the first real discovery source and ingest an initial commercial-cleaning cohort without deep enrichment.
+
+No API secret may be committed to GitHub.
