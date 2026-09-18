@@ -4,11 +4,11 @@
 
 ## Overall
 
-Estimated Project-01 engineering completion: **~35%**
+Estimated Project-01 engineering completion: **~40%**
 
-Estimated remaining focused build work: **~24â€“30 hours / ~6 focused working days**
+Estimated remaining focused build work: **~20â€“26 hours / ~5â€“6 focused working days**
 
-Real outbound replies, meetings, proposals, and revenue can continue accumulating after the engineering build is complete.
+Real outbound replies, meetings, proposals, and revenue can continue accumulating after the engineering build itself is complete.
 
 ## Milestones
 
@@ -23,10 +23,10 @@ Real outbound replies, meetings, proposals, and revenue can continue accumulatin
 | Stable account identity | Complete |
 | Idempotent n8n ingestion | Complete |
 | Processing-run observability V1 | Complete |
-| First real discovery adapter | Complete |
+| First live discovery adapter | Complete |
 | First real discovery cohort | Complete |
-| Hard ICP discovery gate | Next |
-| Website research/evidence engine | Not started |
+| Hard discovery gate V1 | Complete |
+| Website research/evidence engine | Next |
 | Fit / Need / Signal / Confidence V1 | Not started |
 | Decision-maker/contact layer | Not started |
 | GoHighLevel sales pipeline | Not started |
@@ -34,40 +34,20 @@ Real outbound replies, meetings, proposals, and revenue can continue accumulatin
 | Results analysis / iteration | Not started |
 | Final README / visuals / Loom | Not started |
 
-## Day 2
-
-**Status: COMPLETE**
-
-Verified:
-
-- Supabase source of truth;
-- account-key migration;
-- domain/provider identity;
-- idempotent upsert;
-- processing-run observability;
-- live Apify â†’ n8n â†’ Supabase discovery;
-- 40 real records processed;
-- 39 unique accounts persisted;
-- one duplicate collapsed.
-
 ## Day 3
 
-**Status: STARTING**
+**Status: ~35% complete**
 
-Goal:
+Completed:
+- discovery-gate hypothesis;
+- preview against real cohort;
+- deterministic rule implementation;
+- lifecycle mapping;
+- rule-version persistence;
+- verified 17 / 10 / 12 result.
 
-Build a cheap deterministic discovery gate before any deeper research or contact enrichment.
-
-Initial evidence from Dallas:
-
-- 20 janitorial-service records;
-- 12 obvious category mismatches;
-- 7 ambiguous cleaning-category records.
-
-The gate will classify records as:
-
-- PASS_TO_RESEARCH
-- REVIEW
-- REJECT
-
-It is a pre-research gate, not the final ICP score.
+Next:
+- inspect evidence-table contract;
+- build Website Intelligence V1;
+- run small research pilot;
+- validate evidence quality before researching all 17 accounts.

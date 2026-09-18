@@ -96,3 +96,25 @@ The 39-account cohort contained:
 
 ### Next
 Day 3 starts with a deterministic low-cost discovery gate before website research.
+
+## 2026-09-18 â€” Day 3 â€” Discovery Gate V1 Verified
+
+### Added
+- migration 004 for versioned discovery-gate fields;
+- deterministic n8n discovery-gate implementation;
+- ADR-008;
+- TEST-GATE-001 evidence.
+
+### Verified
+- 39-account real discovery cohort evaluated;
+- 17 passed to research;
+- 10 retained for review;
+- 12 rejected as obvious discovery noise;
+- lifecycle status mapping persisted;
+- all records tagged with DG-V1.0.0.
+
+### Interpretation
+The gate is a pre-research cost-control layer, not a final ICP decision.
+
+### Next
+Build Website Intelligence V1 on a small subset of the 17 pass-to-research accounts before scaling research to the full cohort.

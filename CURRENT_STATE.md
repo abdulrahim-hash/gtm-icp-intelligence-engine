@@ -2,72 +2,68 @@
 
 **Date:** 2026-09-18  
 **Project:** Commercial Cleaning GTM Intelligence Engine  
-**Phase:** Day 3 â€” deterministic qualification
+**Phase:** Day 3 â€” website intelligence
 
-## Commercial direction
+## Completed
 
-- Market: US commercial cleaning / janitorial.
-- Initial customer: established local/regional B2B cleaning operators.
-- Offer: Commercial Cleaning Lead-to-Contract System.
-- CRM: GoHighLevel.
-- Architecture: provider-agnostic.
+### Day 1
+Research, positioning, architecture, portfolio design.
 
-## Completed foundation
+### Day 2
+Production data foundation and first live discovery pipeline.
 
-- research / employer requirements;
-- vendor-agnostic architecture;
-- Supabase schema;
-- stable account identity;
-- n8n normalization;
-- idempotent account upsert;
-- processing-run observability V1;
-- first live discovery adapter.
+Verified:
+- 40 real Google Maps records received;
+- 40 processed;
+- 39 unique accounts persisted;
+- one duplicate collapsed;
+- processing-run observability recorded.
 
-## Verified live-discovery result
+### Day 3 â€” Discovery Gate V1
 
-Dallas V1:
+Rule:
+
+`DG-V1.0.0`
+
+Verified output:
 
 ```text
-raw records: 40
-processed: 40
-unique accounts: 39
+pass_to_research: 17
+review:           10
+reject:           12
 ```
 
-Production run:
+Lifecycle mapping is persisted:
 
-`3d05bd8e-f094-4f14-8b82-04725762b524`
+```text
+pass_to_research -> hard_gate_pass
+review           -> hard_gate_review
+reject           -> rejected
+```
 
-Status:
+## Current engineering principle
 
-`success`
+Do not scale discovery or buy contact data yet.
 
-A separate incomplete setup run was preserved and closed as `failed`.
+Research only accounts that have passed the cheap discovery gate.
 
-## Discovery-quality finding
-
-Google Maps provides useful account recall but the raw query universe contains significant noise.
-
-Observed among 39 unique accounts:
-
-- 20 Janitorial service;
-- 12 obvious out-of-scope category results;
-- 7 ambiguous Cleaning service / Cleaners results.
-
-Therefore no additional city scaling should happen before qualification.
+The next stage must preserve source-backed evidence rather than producing only opaque AI labels.
 
 ## Immediate next milestone
 
-Build `Discovery Gate V1`.
+Website Intelligence V1.
 
-Purpose:
+Initial pilot should be small before running all 17 accounts.
 
-```text
-raw discovery
-â†’ cheap deterministic gate
-â†’ PASS_TO_RESEARCH / REVIEW / REJECT
-â†’ website intelligence only for viable accounts
-```
+Target evidence domains:
+- commercial orientation;
+- recurring janitorial/office/facility services;
+- facility/customer types;
+- quote / estimate / walkthrough motion;
+- residential focus;
+- service area;
+- scale clues;
+- franchise / national-enterprise clues;
+- CRM / lead-capture maturity.
 
-The discovery gate is not the final Fit/Need/Signal/Confidence score.
-
-No contact enrichment or outbound should begin yet.
+After evidence quality is validated, build deterministic Fit / Need / Signal / Confidence scoring.
