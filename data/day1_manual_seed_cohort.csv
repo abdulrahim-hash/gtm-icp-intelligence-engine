@@ -1,0 +1,26 @@
+company,domain,market,observable_public_signals,initial_interpretation,manual_label_v0,evidence_type
+Sanitize360,sanitize360.net,NE,Commercial-focused; recurring janitorial; Omaha + Lincoln; walkthrough before quote,Strong local/regional ICP candidate,A-candidate,Public website
+Green Clean Janitorial,greencleanjanitorial.com,Multi-state,11 offices; 6 states; recurring commercial; multi-site/national programs; annual contracts,Mature upper-bound target; may already have stronger systems,B-candidate,Public website
+Final Touch Cleaning Company,finaltouchcleaningteam.com,NV,Commercial-focused; Las Vegas metro; recurring janitorial; walkthrough + written estimate,Strong local owner-led candidate,A-candidate,Public website
+Morfin Cleaning Services,morfincleaning.com,IL,Commercial-focused; broad verticals; recognizable clients; custom quote flow,Mature regional/local candidate,A/B-candidate,Public website
+SparkClean LLC,sparkcleanusa.com,MD,Commercial janitorial + floor care; owner-led; bonded/insured; quote scope,Smaller but commercial-focused,B-candidate,Public website
+Able Facility Solutions,ablefs.com,NJ/PA/NY,45+ years; 175+ locations serviced; large facility-services footprint,Potentially too mature/enterprise for initial offer,C/Exclude-test,Public website
+Premium Services WA,premiumserviceswa.us,WA,26-city coverage; commercial; multi-location property portfolios; walkthrough quote,Strong regional complexity,A-candidate,Public website
+Bright Broom Service,brightbroomservice.com,Multi-state,Commercial/janitorial plus other services; five states; quote flow,Mixed-service but regional complexity,B-candidate,Public website
+C.W. Janitorial Service,cwjanitorialservicesllc.com,USA,Commercial-focused; claims nationwide capability; free quote; family-owned,Needs validation of scale/fit,Research,Public website
+Sterling Pro Cleaning,sterlingprocleaning.com,PA,Commercial + residential; family-owned; 10+ years; quote flow,Mixed residential/commercial lowers fit,C-candidate,Public website
+Kunz Janitorial,kunzjanitorialaz.com,AZ,Commercial-focused; multiple facility types; owner-operated; free quote,Strong local commercial candidate,A-candidate,Public website
+Fresh Care Cleaning,freshcarecleaning.com,AZ,Recurring janitorial; offices/medical/warehouses; walkthrough proposal; broad Phoenix metro,Strong ICP candidate,A-candidate,Public website
+S&T Janitorial,stjanitorial.com,TX,Commercial; since 2006; multiple Permian Basin cities; walkthrough + written proposal; procurement certifications,Strong mature regional candidate,A-candidate,Public website
+JC Janitorial,thinkjcjanitorial.com,OH,Family-owned since 1992; daily commercial cleaning; broad service radius; free estimate,Mature local candidate,A/B-candidate,Public website
+Rubie's Team LLC,rubiesteam.com,AZ,Commercial-focused; 250+ businesses served; 10+ years; quote and walkthrough flow,Strong target if claims verify,A-candidate,Public website
+Office Shines,officeshines.com,TX/Central US,Commercial janitorial; multiple Texas metros; account-manager model; quote flow,Strong regional complexity,A-candidate,Public website
+Speedy Precision Services,speedyprecisionservices.com,AZ,Commercial/janitorial; local facilities/colleges; free quote,Likely smaller target; validate scale,B-candidate,Public website
+MIG Cleaning Organization,migcleaning.com,MI,Residential + commercial; family-owned; tracked/quality-checked service,Mixed segment; validate commercial share,C/B-test,Public website
+Frisco Brothers Janitorial Service,friscojanitorial.com,TX,Commercial-focused; 25 years; 16 cities; 65+ active clients; owner walkthrough,Excellent local/regional ICP example,A-candidate,Public website
+SolSource Clean,solsourceclean.com,AZ,Commercial-focused; 15+ years; custom plans; quote form; Phoenix metro,Strong mature local candidate,A-candidate,Public website
+AK Building Services,akbuildingservices.com,FL,Commercial-focused; 25+ years; broad Florida coverage; established leadership,Strong regional candidate; validate size,A/B-candidate,Public website
+Platinum Shine Co.,platinumshinecolorado.com,CO,Commercial + residential; Colorado statewide; walkthrough booking,Mixed segment; premium positioning,B/C-test,Public website
+CastleKare,castlekarellc.com,FL,Commercial-focused; multiple industries; quality-control process; quote form,Promising local/regional candidate,A/B-candidate,Public website
+Vaakawi,vaakawi.com,AZ,Commercial cleaning; 30+ years; family-owned,Mature commercial candidate; needs sales-process validation,B-candidate,Public website
+CleanNet USA,cleannetusa.com,USA,"National commercial cleaning; 35,000+ facilities; franchise/network scale",Too enterprise/national for initial RepFlow ICP,Exclude-control,Public website
