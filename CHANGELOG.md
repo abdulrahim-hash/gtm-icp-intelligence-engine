@@ -67,3 +67,32 @@ Clay enrichment remains gated behind ICP research and manual company labelling. 
 
 ### Next
 Add processing-run observability before ingesting real commercial-cleaning account data.
+
+## 2026-09-18 â€” Day 2 â€” First Live Discovery Pipeline Verified
+
+### Added
+- discovery/observability migration 003;
+- Google Maps discovery configuration;
+- Apify place-to-account adapter;
+- normalization V1.1;
+- Google Maps discovery ADR;
+- TEST-DISCOVERY-001 evidence.
+
+### Verified
+- Apify returned 40 live Dallas-area records;
+- n8n processed all 40;
+- Supabase stored 39 unique accounts;
+- one duplicate was collapsed through stable account identity/upsert;
+- production processing run completed successfully;
+- incomplete setup execution was explicitly closed as failed.
+
+### Finding
+Google Maps discovery provides useful recall but insufficient precision for direct enrichment/outbound.
+
+The 39-account cohort contained:
+- 20 Janitorial service records;
+- 12 obvious category mismatches;
+- 7 ambiguous Cleaning service / Cleaners records.
+
+### Next
+Day 3 starts with a deterministic low-cost discovery gate before website research.
