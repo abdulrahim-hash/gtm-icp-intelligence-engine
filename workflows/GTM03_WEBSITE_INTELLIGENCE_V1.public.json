@@ -1,0 +1,481 @@
+{
+  "name": "GTM 03 - Website Intelligence V1 [PUBLIC SANITIZED]",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        160,
+        0
+      ],
+      "id": "cb072b6f-53e4-4c1f-bcfe-281ead8faecd",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "https://YOUR_PROJECT.supabase.co/rest/v1/accounts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "select",
+              "value": "id,company_name,website_url,normalized_domain,discovery_gate_status,qualification_status"
+            },
+            {
+              "name": "discovery_gate_status",
+              "value": "eq.pass_to_research"
+            },
+            {
+              "name": "normalized_domain",
+              "value": "in.(pilot-company-1.example,pilot-company-2.example,pilot-company-3.example,pilot-company-4.example,pilot-company-5.example)"
+            },
+            {
+              "name": "order",
+              "value": "company_name.asc"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        368,
+        0
+      ],
+      "id": "4f36c4c2-80cc-4c86-af04-ef933fba3126",
+      "name": "Fetch Pilot Accounts",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase Service Role"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node: Rank Research Pages V1\n// Mode: Run Once for All Items\n//\n// Deterministically ranks crawled pages for downstream LLM extraction.\n// Selects up to 5 pages per account.\n\nconst MAX_PAGES_PER_ACCOUNT = 5;\n\nconst POSITIVE_TERMS = [\n  \"commercial\",\n  \"janitorial\",\n  \"office\",\n  \"facility\",\n  \"facilities\",\n  \"service\",\n  \"services\",\n  \"industry\",\n  \"industries\",\n  \"about\",\n  \"quote\",\n  \"estimate\",\n  \"contact\"\n];\n\nconst NEGATIVE_TERMS = [\n  \"blog\",\n  \"news\",\n  \"privacy\",\n  \"terms\",\n  \"career\",\n  \"careers\",\n  \"login\",\n  \"signup\",\n  \"cart\",\n  \"shop\"\n];\n\nfunction scorePage(r) {\n  const url = String(r.source_url || \"\").toLowerCase();\n  const title = String(r.page_title || \"\").toLowerCase();\n  const combined = `${url} ${title}`;\n\n  let score = 0;\n\n  if (r.page_depth === 0) score += 8;\n\n  for (const term of POSITIVE_TERMS) {\n    if (combined.includes(term)) score += 3;\n  }\n\n  for (const term of NEGATIVE_TERMS) {\n    if (combined.includes(term)) score -= 8;\n  }\n\n  const chars = Math.max(\n    Number(r.text_original_chars || 0),\n    Number(r.markdown_original_chars || 0)\n  );\n\n  if (chars >= 500) score += 2;\n  if (chars >= 1500) score += 2;\n\n  return score;\n}\n\nconst matched = items\n  .map((item) => item.json)\n  .filter((r) => r.account_match_status === \"matched\" && r.account_id);\n\nconst groups = new Map();\n\nfor (const r of matched) {\n  r.page_relevance_score = scorePage(r);\n\n  if (!groups.has(r.account_id)) {\n    groups.set(r.account_id, []);\n  }\n\n  groups.get(r.account_id).push(r);\n}\n\nconst output = [];\n\nfor (const [accountId, rows] of groups.entries()) {\n  rows.sort((a, b) => {\n    if (b.page_relevance_score !== a.page_relevance_score) {\n      return b.page_relevance_score - a.page_relevance_score;\n    }\n\n    const ad = a.page_depth ?? 999;\n    const bd = b.page_depth ?? 999;\n    return ad - bd;\n  });\n\n  for (const r of rows.slice(0, MAX_PAGES_PER_ACCOUNT)) {\n    output.push({\n      json: {\n        ...r,\n        selected_for_research: true\n      }\n    });\n  }\n}\n\nreturn output;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        -16
+      ],
+      "id": "fc9ce42a-b063-462f-b6b4-aa94541b89ef",
+      "name": "Rank Research Pages V1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/apify~website-content-crawler/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "memory",
+              "value": "2048"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.actor_input }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        848,
+        272
+      ],
+      "id": "79b311e7-81a4-404b-b36c-fd0606f5f5fe",
+      "name": "Run Apify Website Crawler",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "APIFY_CREDENTIAL_ID",
+          "name": "Apify API Token Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        832,
+        0
+      ],
+      "id": "9502314c-2918-4b36-b97a-2bf6d5538b7c",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node: Map Crawled Pages to Accounts V1.1\n// Mode: Run Once for All Items\n//\n// Compatible with the balanced per-account crawl architecture.\n// Gets the account lookup from Fetch Pilot Accounts rather than the old\n// single-config builder node.\n\nconst accounts = $(\"Fetch Pilot Accounts\")\n  .all()\n  .map(i => ({\n    id: i.json.id,\n    company_name: i.json.company_name,\n    website_url: i.json.website_url,\n    normalized_domain: i.json.normalized_domain\n  }));\n\nconst MAX_CONTENT_CHARS = 30000;\n\nfunction clean(v) {\n  if (v === undefined || v === null) return null;\n  const s = String(v).trim();\n  return s === \"\" ? null : s;\n}\n\nfunction normalizeHostname(value) {\n  const raw = clean(value);\n  if (!raw) return null;\n\n  try {\n    const candidate = /^[a-z][a-z0-9+.-]*:\\/\\//i.test(raw)\n      ? raw\n      : `https://${raw}`;\n\n    return new URL(candidate).hostname\n      .toLowerCase()\n      .replace(/^www\\./, \"\")\n      .replace(/\\.$/, \"\");\n  } catch {\n    let s = raw\n      .toLowerCase()\n      .replace(/^[a-z][a-z0-9+.-]*:\\/\\//i, \"\")\n      .replace(/^\\/\\//, \"\")\n      .split(/[/?#]/)[0]\n      .replace(/:\\d+$/, \"\")\n      .replace(/^www\\./, \"\")\n      .replace(/\\.$/, \"\");\n\n    return s || null;\n  }\n}\n\nfunction pageUrl(p) {\n  return clean(\n    p?.crawl?.loadedUrl ??\n    p?.loadedUrl ??\n    p?.url\n  );\n}\n\nfunction pageDepth(p) {\n  const raw = p?.crawl?.depth ?? p?.depth;\n  if (raw === undefined || raw === null || raw === \"\") return null;\n\n  const n = Number(raw);\n  return Number.isFinite(n) ? n : null;\n}\n\nfunction observedAt(p) {\n  return clean(\n    p?.crawl?.loadedTime ??\n    p?.loadedTime ??\n    p?.fetchedAt ??\n    p?.crawledAt\n  ) || new Date().toISOString();\n}\n\nfunction titleOf(p) {\n  return clean(\n    p?.metadata?.title ??\n    p?.title\n  );\n}\n\nfunction cap(text) {\n  const value = clean(text);\n\n  if (!value) {\n    return {\n      value: null,\n      truncated: false,\n      original_chars: 0\n    };\n  }\n\n  return {\n    value: value.slice(0, MAX_CONTENT_CHARS),\n    truncated: value.length > MAX_CONTENT_CHARS,\n    original_chars: value.length\n  };\n}\n\nlet pages = [];\n\nfor (const item of items) {\n  const value = item.json;\n\n  if (Array.isArray(value)) {\n    pages.push(...value);\n  } else if (Array.isArray(value?.data)) {\n    pages.push(...value.data);\n  } else {\n    pages.push(value);\n  }\n}\n\nreturn pages.map((p) => {\n  const sourceUrl = pageUrl(p);\n  const host = normalizeHostname(sourceUrl);\n\n  const account = accounts.find((a) => {\n    const domain = normalizeHostname(a.normalized_domain);\n\n    if (!domain || !host) return false;\n\n    return host === domain || host.endsWith(`.${domain}`);\n  }) || null;\n\n  const textCap = cap(p?.text);\n  const markdownCap = cap(p?.markdown);\n\n  return {\n    json: {\n      research_version: \"WI-V1A.2.0\",\n\n      account_match_status: account ? \"matched\" : \"unmatched\",\n      account_id: account?.id ?? null,\n      company_name: account?.company_name ?? null,\n      normalized_domain: account?.normalized_domain ?? null,\n\n      source_url: sourceUrl,\n      source_hostname: host,\n\n      source_type: \"website\",\n      source_provider: \"apify_website_content_crawler\",\n      source_observed_at: observedAt(p),\n\n      page_title: titleOf(p),\n      page_depth: pageDepth(p),\n\n      content_text: textCap.value,\n      content_markdown: markdownCap.value,\n\n      content_truncated:\n        textCap.truncated || markdownCap.truncated,\n\n      text_original_chars: textCap.original_chars,\n      markdown_original_chars: markdownCap.original_chars,\n\n      crawl_metadata: {\n        url: clean(p?.url),\n        loaded_url: clean(p?.crawl?.loadedUrl ?? p?.loadedUrl),\n        canonical_url: clean(\n          p?.metadata?.canonicalUrl ??\n          p?.canonicalUrl\n        ),\n        description: clean(\n          p?.metadata?.description ??\n          p?.description\n        ),\n        language_code: clean(\n          p?.metadata?.languageCode ??\n          p?.languageCode\n        ),\n        referrer_url: clean(\n          p?.crawl?.referrerUrl ??\n          p?.referrerUrl\n        )\n      }\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        -16
+      ],
+      "id": "22b09735-bb6a-485a-b335-cbc6e73f7e2f",
+      "name": "Map Crawled Pages to Accounts V1.1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node: Build Website Crawl Jobs V1.3\n// Mode: Run Once for All Items\n//\n// Strategy:\n// 1) Cheap/fast Cheerio crawl first.\n// 2) Adaptive browser crawl only for accounts with insufficient content.\n//\n// Output: one crawl job per account.\n\nconst RESEARCH_VERSION = \"WI-V1A.3.0\";\nconst MAX_CRAWL_PAGES = 5;\nconst MAX_RESULTS = 5;\n\nfunction clean(v) {\n  if (v === undefined || v === null) return null;\n  const s = String(v).trim();\n  return s === \"\" ? null : s;\n}\n\nreturn items.map(({ json }) => {\n  const id = clean(json.id);\n  const companyName = clean(json.company_name);\n  const websiteUrl = clean(json.website_url);\n  const normalizedDomain = clean(json.normalized_domain);\n\n  if (!id || !companyName || !websiteUrl || !normalizedDomain) {\n    throw new Error(\n      `Pilot account missing required fields: ${JSON.stringify(json)}`\n    );\n  }\n\n  return {\n    json: {\n      research_version: RESEARCH_VERSION,\n\n      account_id: id,\n      company_name: companyName,\n      normalized_domain: normalizedDomain,\n      website_url: websiteUrl,\n\n      actor_input: {\n        startUrls: [{ url: websiteUrl }],\n\n        // Raw HTTP first: substantially lighter/faster than browser crawling.\n        crawlerType: \"cheerio\",\n\n        maxCrawlDepth: 1,\n        maxCrawlPages: MAX_CRAWL_PAGES,\n        maxResults: MAX_RESULTS,\n\n        initialConcurrency: 1,\n        maxConcurrency: 1,\n\n        useSitemaps: false,\n        useLlmsTxt: false,\n        respectRobotsTxtFile: true,\n\n        proxyConfiguration: {\n          useApifyProxy: true\n        },\n\n        blockMedia: true,\n        saveMarkdown: true,\n        saveHtml: false,\n        saveHtmlAsFile: false,\n        saveScreenshots: false,\n        summarize: false\n      }\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        0
+      ],
+      "id": "ccb67ebf-6c7f-4045-83ac-11ffaa2a3dd3",
+      "name": "Build Balanced Website Crawl Jobs V1.3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Company Research Packets V1.1\n// Mode: Run Once for All Items\n\nconst RESEARCH_VERSION = \"WI-V1B.0.0-GEMINI\";\n\nconst MAX_PAGES_PER_ACCOUNT = 5;\nconst MAX_CHARS_PER_PAGE = 7000;\nconst MAX_PACKET_CHARS = 24000;\n\n// Explicitly collect ALL ranked pages from the upstream node.\nconst rows = $(\"Rank Research Pages V1\")\n  .all()\n  .map(i => i.json)\n  .filter(r =>\n    r.account_id &&\n    r.company_name &&\n    r.source_url\n  );\n\nconst groups = new Map();\n\nfor (const row of rows) {\n  if (!groups.has(row.account_id)) {\n    groups.set(row.account_id, {\n      account_id: row.account_id,\n      company_name: row.company_name,\n      normalized_domain: row.normalized_domain,\n      pages: []\n    });\n  }\n\n  groups.get(row.account_id).pages.push(row);\n}\n\nconst output = [];\n\nfor (const group of groups.values()) {\n\n  const seenUrls = new Set();\n\n  const selected = group.pages\n    .sort(\n      (a, b) =>\n        Number(b.page_relevance_score || 0) -\n        Number(a.page_relevance_score || 0)\n    )\n    .filter(page => {\n      if (seenUrls.has(page.source_url)) {\n        return false;\n      }\n\n      seenUrls.add(page.source_url);\n      return true;\n    })\n    .slice(0, MAX_PAGES_PER_ACCOUNT);\n\n  let packetChars = 0;\n  const documents = [];\n\n  for (const page of selected) {\n\n    if (packetChars >= MAX_PACKET_CHARS) {\n      break;\n    }\n\n    const raw =\n      String(\n        page.content_markdown ||\n        page.content_text ||\n        \"\"\n      ).trim();\n\n    if (!raw) {\n      continue;\n    }\n\n    const remaining =\n      MAX_PACKET_CHARS - packetChars;\n\n    const content = raw.slice(\n      0,\n      Math.min(\n        MAX_CHARS_PER_PAGE,\n        remaining\n      )\n    );\n\n    if (!content) {\n      continue;\n    }\n\n    packetChars += content.length;\n\n    documents.push({\n      source_url: page.source_url,\n\n      source_observed_at:\n        page.source_observed_at ||\n        new Date().toISOString(),\n\n      page_title:\n        page.page_title || null,\n\n      page_relevance_score:\n        Number(\n          page.page_relevance_score || 0\n        ),\n\n      content\n    });\n  }\n\n  if (!documents.length) {\n    continue;\n  }\n\n  output.push({\n    json: {\n      research_version: RESEARCH_VERSION,\n\n      account_id:\n        group.account_id,\n\n      company_name:\n        group.company_name,\n\n      normalized_domain:\n        group.normalized_domain,\n\n      page_count:\n        documents.length,\n\n      packet_chars:\n        packetChars,\n\n      source_urls:\n        documents.map(\n          d => d.source_url\n        ),\n\n      documents\n    }\n  });\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        -16
+      ],
+      "id": "202d77dd-66ef-451c-a6a2-63c8f2c79026",
+      "name": "Build Company Research Packets V1"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Build Gemini Evidence Request V1\n// n8n Code node\n// Mode: Run Once for Each Item\n\nconst p = $json;\n\nconst RESEARCH_VERSION = \"WI-V1B.0.0-GEMINI\";\nconst MODEL = \"gemini-3.1-flash-lite\";\n\nconst specs = {\n  commercial_focus: [\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ],\n\n  recurring_janitorial: [\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ],\n\n  office_cleaning: [\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ],\n\n  facility_types: [\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ],\n\n  quote_estimate_motion: [\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ],\n\n  walkthrough_signal: [\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ],\n\n  residential_focus: [\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ],\n\n  service_area_scope: [\n    \"local\",\n    \"regional\",\n    \"multi_region\",\n    \"national\",\n    \"unknown\"\n  ],\n\n  enterprise_scale_signal: [\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ],\n\n  franchise_signal: [\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ],\n\n  technology_maturity: [\n    \"high\",\n    \"medium\",\n    \"low\",\n    \"unknown\"\n  ],\n\n  lead_capture_maturity: [\n    \"high\",\n    \"medium\",\n    \"low\",\n    \"unknown\"\n  ]\n};\n\nfunction makeEvidenceSchema(values) {\n  return {\n    type: \"object\",\n\n    properties: {\n      value: {\n        type: \"string\",\n        enum: values\n      },\n\n      observed_text: {\n        type: \"string\",\n        description:\n          \"Short verbatim excerpt copied from supplied website content, approximately 20 words or fewer. Empty string when unknown.\"\n      },\n\n      source_url: {\n        type: \"string\",\n        description:\n          \"Exact URL from the supplied documents supporting the finding. Empty string when unknown.\"\n      },\n\n      confidence: {\n        type: \"integer\",\n        minimum: 0,\n        maximum: 100,\n        description:\n          \"Confidence from 0 to 100 based only on supplied website evidence.\"\n      },\n\n      reason: {\n        type: \"string\",\n        description:\n          \"Concise explanation grounded only in supplied website content.\"\n      }\n    },\n\n    required: [\n      \"value\",\n      \"observed_text\",\n      \"source_url\",\n      \"confidence\",\n      \"reason\"\n    ],\n\n    additionalProperties: false\n  };\n}\n\nconst evidenceProperties = {};\n\nfor (const key of Object.keys(specs)) {\n  evidenceProperties[key] = makeEvidenceSchema(specs[key]);\n}\n\nconst responseSchema = {\n  type: \"object\",\n\n  properties: {\n    account_id: {\n      type: \"string\"\n    },\n\n    company_name: {\n      type: \"string\"\n    },\n\n    evidence: {\n      type: \"object\",\n      properties: evidenceProperties,\n      required: Object.keys(specs),\n      additionalProperties: false\n    }\n  },\n\n  required: [\n    \"account_id\",\n    \"company_name\",\n    \"evidence\"\n  ],\n\n  additionalProperties: false\n};\n\nconst documents = Array.isArray(p.documents)\n  ? p.documents\n  : [];\n\nif (!p.account_id) {\n  throw new Error(\"Missing account_id.\");\n}\n\nif (!p.company_name) {\n  throw new Error(\"Missing company_name.\");\n}\n\nif (!documents.length) {\n  throw new Error(\n    `No website documents supplied for ${p.company_name}.`\n  );\n}\n\nconst documentText = documents\n  .map((doc, index) => {\n    return [\n      `<document index=\"${index + 1}\">`,\n      `<source_url>${doc.source_url || \"\"}</source_url>`,\n      `<page_title>${doc.page_title || \"\"}</page_title>`,\n      \"<document_content>\",\n      doc.content || \"\",\n      \"</document_content>\",\n      \"</document>\"\n    ].join(\"\\n\");\n  })\n  .join(\"\\n\\n\");\n\nconst prompt = `\n<account>\n<account_id>${p.account_id}</account_id>\n<company_name>${p.company_name}</company_name>\n<normalized_domain>${p.normalized_domain || \"\"}</normalized_domain>\n</account>\n\n<documents>\n${documentText}\n</documents>\n\nYour task is to extract structured B2B company evidence using ONLY the supplied website documents.\n\nDo not determine whether the company is a good lead.\nDo not score the account.\nDo not make a final GTM recommendation.\n\nEvidence definitions:\n\ncommercial_focus:\nEvidence that the company sells B2B, commercial, facility, institutional, organizational, or business cleaning services.\n\nrecurring_janitorial:\nEvidence of recurring, routine, contract-based, ongoing janitorial, custodial, or facility-cleaning services.\n\noffice_cleaning:\nEvidence of office, workplace, corporate, or commercial-office cleaning services.\n\nfacility_types:\nEvidence identifying customer or facility types such as offices, healthcare, schools, industrial facilities, warehouses, retail, gyms, hospitality, etc.\n\nquote_estimate_motion:\nEvidence of a quote, estimate, consultation, proposal request, assessment, pricing request, or equivalent sales CTA.\n\nwalkthrough_signal:\nEvidence of an on-site walkthrough, site survey, facility assessment, inspection, consultation visit, or equivalent pre-sale facility review.\n\nresidential_focus:\nEvidence that residential, house, home, apartment, maid, or consumer cleaning is a material part of the company's services.\n\nservice_area_scope:\nClassify geographic scope only when directly supported by supplied website content:\n- local\n- regional\n- multi_region\n- national\n- unknown\n\nenterprise_scale_signal:\nEvidence of large enterprise scale, national operations, many branches, many facilities, substantial corporate infrastructure, major portfolio coverage, or similar scale indicators.\n\nfranchise_signal:\nEvidence that the company is a franchise, franchisor, franchisee, franchise location, or operates through a franchise system.\n\ntechnology_maturity:\nEvidence of proprietary technology, customer portals, dashboards, digital monitoring, advanced software, automation, facility-management platforms, or other material technology infrastructure.\n\nlead_capture_maturity:\nEvidence regarding visible website lead capture such as contact forms, booking, quote requests, assessment forms, consultations, multiple conversion paths, or sophisticated conversion workflows.\n\nSTRICT EVIDENCE RULES:\n\n1. Use ONLY the supplied documents.\n\n2. Do NOT use outside knowledge, prior knowledge, search-engine knowledge, general company knowledge, or assumptions.\n\n3. Do NOT infer a fact merely from:\n   - company name\n   - domain name\n   - brand reputation\n   - industry assumptions\n\n4. Use \"unknown\" whenever the supplied documents do not establish the concept.\n\n5. \"absent\" may ONLY be used when the supplied website content explicitly supports that the concept is absent, excluded, unavailable, not offered, or otherwise clearly not applicable.\n\n6. Never classify something as \"absent\" merely because it was not mentioned.\n\n7. Every \"absent\" classification MUST include:\n   - a source_url\n   - an observed_text excerpt\n   that explicitly supports the absence or exclusion.\n\n8. For \"unknown\":\n   - source_url MUST be an empty string\n   - observed_text MUST be an empty string\n\n9. For every non-unknown finding:\n   - source_url MUST exactly match one of the supplied document URLs\n   - observed_text MUST be copied verbatim from that document\n   - observed_text should normally be approximately 20 words or fewer\n\n10. Do not paraphrase observed_text.\n\n11. The reason may explain ONLY what the supplied website evidence supports.\n\n12. The reason must NOT introduce outside facts.\n\n13. If the source says:\n   \"part of Company X\"\n   you may say:\n   \"The website states the company is part of Company X.\"\n\n   You may NOT add:\n   \"Company X is a global Fortune 500 enterprise\"\n   unless the supplied documents explicitly state that.\n\n14. Confidence measures confidence in the evidence extraction, NOT whether the company is an attractive prospect.\n\n15. High confidence requires clear direct evidence.\n\n16. Weak or ambiguous website language should receive lower confidence.\n\n17. Do NOT calculate:\n   - Fit Score\n   - Need Score\n   - Signal Score\n   - Confidence Score for the account\n   - ICP Score\n   - Lead Score\n   - Outbound Priority\n   - Tier\n   - Recommendation\n\n18. Return account_id EXACTLY as:\n${p.account_id}\n\n19. Return company_name EXACTLY as:\n${p.company_name}\n`;\n\nconst geminiRequest = {\n  systemInstruction: {\n    parts: [\n      {\n        text:\n          \"You are a precise B2B website evidence extraction engine. Extract only source-backed facts from supplied website content. Missing evidence is unknown. Never use outside knowledge. Never score or recommend accounts.\"\n      }\n    ]\n  },\n\n  contents: [\n    {\n      role: \"user\",\n      parts: [\n        {\n          text: prompt\n        }\n      ]\n    }\n  ],\n\n  generationConfig: {\n    responseMimeType: \"application/json\",\n    responseJsonSchema: responseSchema\n  }\n};\n\nreturn {\n  json: {\n    research_version: RESEARCH_VERSION,\n\n    account_id: p.account_id,\n    company_name: p.company_name,\n    normalized_domain: p.normalized_domain || null,\n\n    source_urls: Array.isArray(p.source_urls)\n      ? p.source_urls\n      : documents\n          .map(d => d.source_url)\n          .filter(Boolean),\n\n    documents,\n\n    llm_provider: \"google_gemini\",\n    llm_model: MODEL,\n\n    gemini_request: geminiRequest\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        -16
+      ],
+      "id": "3d55013e-bdbd-4775-981c-c16d68bfbc1c",
+      "name": "Build Gemini Evidence Request V1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.gemini_request }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1936,
+        224
+      ],
+      "id": "e8b203c2-a490-4394-9844-a3597eef366c",
+      "name": "Extract Website Evidence - Gemini",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "GEMINI_CREDENTIAL_ID",
+          "name": "Gemini API Key Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate & Flatten Gemini Evidence V1.1\n// n8n Code node\n// Mode: Run Once for All Items\n\nconst RESEARCH_VERSION = \"WI-V1B.0.0-GEMINI\";\nconst MODEL = \"gemini-3.1-flash-lite\";\n\nconst valueDomains = {\n  commercial_focus: new Set([\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ]),\n\n  recurring_janitorial: new Set([\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ]),\n\n  office_cleaning: new Set([\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ]),\n\n  facility_types: new Set([\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ]),\n\n  quote_estimate_motion: new Set([\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ]),\n\n  walkthrough_signal: new Set([\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ]),\n\n  residential_focus: new Set([\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ]),\n\n  service_area_scope: new Set([\n    \"local\",\n    \"regional\",\n    \"multi_region\",\n    \"national\",\n    \"unknown\"\n  ]),\n\n  enterprise_scale_signal: new Set([\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ]),\n\n  franchise_signal: new Set([\n    \"strong\",\n    \"moderate\",\n    \"weak\",\n    \"absent\",\n    \"unknown\"\n  ]),\n\n  technology_maturity: new Set([\n    \"high\",\n    \"medium\",\n    \"low\",\n    \"unknown\"\n  ]),\n\n  lead_capture_maturity: new Set([\n    \"high\",\n    \"medium\",\n    \"low\",\n    \"unknown\"\n  ])\n};\n\n\n// --------------------------------------------------\n// Load original research packets\n// --------------------------------------------------\n\nconst packets = $(\"Build Company Research Packets V1\")\n  .all()\n  .map(item => item.json);\n\nif (!packets.length) {\n  throw new Error(\n    \"No research packets found from Build Company Research Packets V1.\"\n  );\n}\n\nconst packetByAccount = new Map();\n\nfor (const packet of packets) {\n  if (!packet.account_id) {\n    throw new Error(\n      \"Research packet found without account_id.\"\n    );\n  }\n\n  packetByAccount.set(\n    packet.account_id,\n    packet\n  );\n}\n\n\n// --------------------------------------------------\n// Helpers\n// --------------------------------------------------\n\nfunction decodeBasicEntities(value) {\n  return String(value || \"\")\n    .replace(/&nbsp;/gi, \" \")\n    .replace(/&amp;/gi, \"&\")\n    .replace(/&quot;/gi, '\"')\n    .replace(/&#39;/gi, \"'\")\n    .replace(/&apos;/gi, \"'\")\n    .replace(/&lt;/gi, \"<\")\n    .replace(/&gt;/gi, \">\");\n}\n\n\nfunction normalizeForQuoteMatch(value) {\n  return decodeBasicEntities(value)\n\n    // Markdown links: [text](url) -> text\n    .replace(\n      /\\[([^\\]]+)\\]\\([^\\)]+\\)/g,\n      \"$1\"\n    )\n\n    // Strip HTML\n    .replace(\n      /<[^>]*>/g,\n      \" \"\n    )\n\n    // Normalize quotation marks\n    .replace(\n      /[“”]/g,\n      '\"'\n    )\n    .replace(\n      /[‘’]/g,\n      \"'\"\n    )\n\n    // Strip common markdown syntax\n    .replace(\n      /[`*_~>#|]/g,\n      \" \"\n    )\n\n    // Strip punctuation but keep words/numbers\n    .replace(\n      /[^\\p{L}\\p{N}'\"\\s-]/gu,\n      \" \"\n    )\n\n    // Normalize dashes\n    .replace(\n      /[-–—]+/g,\n      \" \"\n    )\n\n    .replace(\n      /\\s+/g,\n      \" \"\n    )\n\n    .trim()\n    .toLowerCase();\n}\n\n\nfunction quoteExistsInSource(\n  sourceContent,\n  observedText\n) {\n  const source =\n    normalizeForQuoteMatch(\n      sourceContent\n    );\n\n  const quote =\n    normalizeForQuoteMatch(\n      observedText\n    );\n\n  if (!source || !quote) {\n    return false;\n  }\n\n  // Strongest check\n  if (source.includes(quote)) {\n    return true;\n  }\n\n  const quoteTokens =\n    quote\n      .split(\" \")\n      .filter(Boolean);\n\n  const sourceTokens =\n    source\n      .split(\" \")\n      .filter(Boolean);\n\n  if (\n    quoteTokens.length < 4 ||\n    sourceTokens.length <\n      quoteTokens.length\n  ) {\n    return false;\n  }\n\n  /*\n    Conservative fallback.\n\n    For longer quotes allow one token mismatch.\n    For shorter quotes require exact contiguous tokens.\n\n    This helps with:\n    - punctuation changes\n    - markdown formatting\n    - one minor crawler/model normalization difference\n  */\n\n  const allowedMismatches =\n    quoteTokens.length >= 8\n      ? 1\n      : 0;\n\n  for (\n    let i = 0;\n    i <=\n      sourceTokens.length -\n        quoteTokens.length;\n    i++\n  ) {\n    let mismatches = 0;\n\n    for (\n      let j = 0;\n      j < quoteTokens.length;\n      j++\n    ) {\n      if (\n        sourceTokens[i + j] !==\n        quoteTokens[j]\n      ) {\n        mismatches++;\n\n        if (\n          mismatches >\n          allowedMismatches\n        ) {\n          break;\n        }\n      }\n    }\n\n    if (\n      mismatches <=\n      allowedMismatches\n    ) {\n      return true;\n    }\n  }\n\n  return false;\n}\n\n\nfunction extractGeminiText(response) {\n  const candidates =\n    response?.candidates;\n\n  if (\n    !Array.isArray(candidates) ||\n    candidates.length === 0\n  ) {\n    throw new Error(\n      \"Gemini response contains no candidates.\"\n    );\n  }\n\n  const candidate =\n    candidates[0];\n\n  const finishReason =\n    candidate?.finishReason ||\n    null;\n\n  if (\n    finishReason &&\n    ![\n      \"STOP\",\n      \"MAX_TOKENS\"\n    ].includes(finishReason)\n  ) {\n    throw new Error(\n      `Gemini returned unexpected finishReason: ${finishReason}`\n    );\n  }\n\n  const parts =\n    candidate?.content?.parts;\n\n  if (!Array.isArray(parts)) {\n    throw new Error(\n      \"Gemini response contains no content.parts array.\"\n    );\n  }\n\n  const textPart =\n    parts.find(\n      part =>\n        typeof part?.text ===\n          \"string\" &&\n        part.text.trim()\n    );\n\n  if (!textPart) {\n    throw new Error(\n      \"Gemini response contains no text output.\"\n    );\n  }\n\n  return textPart.text.trim();\n}\n\n\nfunction conceptPresent(value) {\n  if (value === \"unknown\") {\n    return null;\n  }\n\n  if (value === \"absent\") {\n    return false;\n  }\n\n  return true;\n}\n\n\nfunction downgradeToUnknown(\n  original,\n  issue\n) {\n  return {\n    value: \"unknown\",\n\n    sourceUrl: null,\n\n    observedText: \"\",\n\n    confidence: 0,\n\n    reason:\n      `Validation downgraded this field to unknown: ${issue}`,\n\n    validationStatus:\n      \"downgraded_to_unknown\",\n\n    validationIssue:\n      issue,\n\n    originalValue:\n      original.value || null,\n\n    originalSourceUrl:\n      original.sourceUrl || null,\n\n    originalObservedText:\n      original.observedText || \"\",\n\n    originalReason:\n      original.reason || \"\"\n  };\n}\n\n\n// --------------------------------------------------\n// Output structures\n// --------------------------------------------------\n\nconst evidenceRows = [];\n\nconst accountSummaries = [];\n\nconst validationWarnings = [];\n\n\n// --------------------------------------------------\n// Process Gemini responses\n// --------------------------------------------------\n\nfor (const item of items) {\n\n  const response =\n    item.json;\n\n  const rawText =\n    extractGeminiText(\n      response\n    );\n\n  let parsed;\n\n  try {\n    parsed =\n      JSON.parse(\n        rawText\n      );\n  } catch (error) {\n    throw new Error(\n      `Gemini output is not valid JSON: ${error.message}`\n    );\n  }\n\n\n  // ------------------------------------------------\n  // Account identity\n  // ------------------------------------------------\n\n  if (!parsed.account_id) {\n    throw new Error(\n      \"Gemini response missing account_id.\"\n    );\n  }\n\n  const packet =\n    packetByAccount.get(\n      parsed.account_id\n    );\n\n  if (!packet) {\n    throw new Error(\n      `Gemini returned unknown account_id: ${parsed.account_id}`\n    );\n  }\n\n  if (\n    parsed.company_name !==\n    packet.company_name\n  ) {\n    throw new Error(\n      `Company-name mismatch for ${parsed.account_id}. ` +\n      `Expected '${packet.company_name}', ` +\n      `got '${parsed.company_name}'.`\n    );\n  }\n\n\n  // ------------------------------------------------\n  // Build source-document lookup\n  // ------------------------------------------------\n\n  const documents =\n    Array.isArray(\n      packet.documents\n    )\n      ? packet.documents\n      : [];\n\n  const sourceDocumentMap =\n    new Map();\n\n  for (const doc of documents) {\n\n    if (!doc.source_url) {\n      continue;\n    }\n\n    sourceDocumentMap.set(\n      doc.source_url,\n      doc\n    );\n  }\n\n\n  // ------------------------------------------------\n  // Evidence object\n  // ------------------------------------------------\n\n  const evidence =\n    parsed.evidence;\n\n  if (\n    !evidence ||\n    typeof evidence !== \"object\"\n  ) {\n    throw new Error(\n      `Missing evidence object for ${packet.company_name}.`\n    );\n  }\n\n\n  let downgradedFields = 0;\n\n\n  // ------------------------------------------------\n  // Validate all evidence dimensions\n  // ------------------------------------------------\n\n  for (\n    const [\n      key,\n      allowedValues\n    ]\n    of Object.entries(\n      valueDomains\n    )\n  ) {\n\n    const e =\n      evidence[key];\n\n    if (!e) {\n      throw new Error(\n        `Missing evidence key '${key}' for ${packet.company_name}.`\n      );\n    }\n\n\n    // ----------------------------------------------\n    // Validate value\n    // ----------------------------------------------\n\n    const rawValue =\n      String(\n        e.value || \"\"\n      ).trim();\n\n    if (\n      !allowedValues.has(\n        rawValue\n      )\n    ) {\n      throw new Error(\n        `Invalid value '${rawValue}' for '${key}' / ${packet.company_name}.`\n      );\n    }\n\n\n    // ----------------------------------------------\n    // Validate confidence\n    // ----------------------------------------------\n\n    const rawConfidence =\n      Number(\n        e.confidence\n      );\n\n    if (\n      !Number.isInteger(\n        rawConfidence\n      ) ||\n      rawConfidence < 0 ||\n      rawConfidence > 100\n    ) {\n      throw new Error(\n        `Invalid confidence '${e.confidence}' for '${key}' / ${packet.company_name}.`\n      );\n    }\n\n\n    // ----------------------------------------------\n    // Normalize raw model fields\n    // ----------------------------------------------\n\n    const rawSourceUrl =\n      typeof e.source_url ===\n        \"string\" &&\n      e.source_url.trim()\n        ? e.source_url.trim()\n        : null;\n\n    const rawObservedText =\n      typeof e.observed_text ===\n        \"string\"\n        ? e.observed_text.trim()\n        : \"\";\n\n    const rawReason =\n      typeof e.reason ===\n        \"string\"\n        ? e.reason.trim()\n        : \"\";\n\n    if (!rawReason) {\n      throw new Error(\n        `Missing reason for '${key}' / ${packet.company_name}.`\n      );\n    }\n\n\n    // ----------------------------------------------\n    // Start with model output\n    // ----------------------------------------------\n\n    let normalized = {\n      value:\n        rawValue,\n\n      sourceUrl:\n        rawSourceUrl,\n\n      observedText:\n        rawObservedText,\n\n      confidence:\n        rawConfidence,\n\n      reason:\n        rawReason,\n\n      validationStatus:\n        \"validated\",\n\n      validationIssue:\n        null,\n\n      originalValue:\n        null,\n\n      originalSourceUrl:\n        null,\n\n      originalObservedText:\n        null,\n\n      originalReason:\n        null\n    };\n\n\n    // ----------------------------------------------\n    // Unknown evidence\n    // ----------------------------------------------\n\n    if (\n      rawValue ===\n      \"unknown\"\n    ) {\n\n      /*\n        Unknown is safe.\n\n        Remove any accidental\n        source assertion Gemini\n        may have attached.\n      */\n\n      normalized.sourceUrl =\n        null;\n\n      normalized.observedText =\n        \"\";\n\n    } else {\n\n      // --------------------------------------------\n      // Validate asserted evidence\n      // --------------------------------------------\n\n      let issue =\n        null;\n\n      if (\n        !rawSourceUrl\n      ) {\n\n        issue =\n          `non-unknown value '${rawValue}' has no source_url`;\n\n      } else if (\n        !rawObservedText\n      ) {\n\n        issue =\n          `non-unknown value '${rawValue}' has no observed_text`;\n\n      } else if (\n        !sourceDocumentMap.has(\n          rawSourceUrl\n        )\n      ) {\n\n        issue =\n          \"source_url was not supplied in this account's research packet\";\n\n      } else {\n\n        const sourceDocument =\n          sourceDocumentMap.get(\n            rawSourceUrl\n          );\n\n        const quoteVerified =\n          quoteExistsInSource(\n            sourceDocument.content || \"\",\n            rawObservedText\n          );\n\n        if (!quoteVerified) {\n\n          issue =\n            \"observed_text could not be verified in the cited source\";\n\n        }\n      }\n\n\n      // --------------------------------------------\n      // Absence claims\n      // --------------------------------------------\n\n      if (\n        rawValue === \"absent\" &&\n        !issue\n      ) {\n\n        /*\n          We cannot algorithmically prove\n          semantic negation.\n\n          But absence claims must at least\n          contain traceable source evidence.\n        */\n\n        if (\n          !rawSourceUrl ||\n          !rawObservedText\n        ) {\n\n          issue =\n            \"absent requires explicit source_url and observed_text\";\n\n        }\n      }\n\n\n      // --------------------------------------------\n      // Fail closed at FIELD level\n      // --------------------------------------------\n\n      if (issue) {\n\n        normalized =\n          downgradeToUnknown(\n            {\n              value:\n                rawValue,\n\n              sourceUrl:\n                rawSourceUrl,\n\n              observedText:\n                rawObservedText,\n\n              reason:\n                rawReason\n            },\n\n            issue\n          );\n\n        downgradedFields++;\n\n        validationWarnings.push({\n          account_id:\n            parsed.account_id,\n\n          company_name:\n            parsed.company_name,\n\n          evidence_key:\n            key,\n\n          original_value:\n            rawValue,\n\n          issue\n        });\n      }\n    }\n\n\n    // ----------------------------------------------\n    // Resolve verified source\n    // ----------------------------------------------\n\n    let sourceDocument =\n      null;\n\n    if (\n      normalized.sourceUrl\n    ) {\n\n      sourceDocument =\n        sourceDocumentMap.get(\n          normalized.sourceUrl\n        ) || null;\n    }\n\n\n    // ----------------------------------------------\n    // Build Supabase evidence row\n    // ----------------------------------------------\n\n    evidenceRows.push({\n      account_id:\n        parsed.account_id,\n\n      evidence_type:\n        \"website_intelligence\",\n\n      evidence_key:\n        key,\n\n      evidence_value:\n        normalized.value,\n\n      evidence_json: {\n\n        normalized_value:\n          normalized.value,\n\n        observed_text:\n          normalized.observedText,\n\n        reason:\n          normalized.reason,\n\n        validation_status:\n          normalized.validationStatus,\n\n        validation_issue:\n          normalized.validationIssue,\n\n        original_model_value:\n          normalized.originalValue,\n\n        original_source_url:\n          normalized.originalSourceUrl,\n\n        original_observed_text:\n          normalized.originalObservedText,\n\n        original_reason:\n          normalized.originalReason,\n\n        extraction_provider:\n          \"google_gemini\",\n\n        extraction_model:\n          MODEL,\n\n        research_version:\n          RESEARCH_VERSION,\n\n        packet_page_count:\n          packet.page_count ||\n          documents.length,\n\n        packet_chars:\n          packet.packet_chars ||\n          null\n      },\n\n      source_type:\n        \"website\",\n\n      source_url:\n        normalized.sourceUrl,\n\n      source_provider:\n        \"company_website_via_apify\",\n\n      source_observed_at:\n        sourceDocument\n          ?.source_observed_at ||\n        new Date()\n          .toISOString(),\n\n      confidence:\n        normalized.confidence,\n\n      is_positive:\n        conceptPresent(\n          normalized.value\n        ),\n\n      is_current:\n        true,\n\n      research_version:\n        RESEARCH_VERSION,\n\n      evidence_fingerprint:\n        `${parsed.account_id}|${RESEARCH_VERSION}|${key}`\n    });\n  }\n\n\n  // ------------------------------------------------\n  // Account QA summary\n  // ------------------------------------------------\n\n  accountSummaries.push({\n    account_id:\n      parsed.account_id,\n\n    company_name:\n      parsed.company_name,\n\n    evidence_rows:\n      Object.keys(\n        valueDomains\n      ).length,\n\n    downgraded_to_unknown:\n      downgradedFields\n  });\n}\n\n\n// --------------------------------------------------\n// Final row-count validation\n// --------------------------------------------------\n\nconst expectedEvidenceRows =\n  accountSummaries.length *\n  Object.keys(\n    valueDomains\n  ).length;\n\nif (\n  evidenceRows.length !==\n  expectedEvidenceRows\n) {\n  throw new Error(\n    `Evidence row count mismatch. ` +\n    `Expected ${expectedEvidenceRows}, ` +\n    `got ${evidenceRows.length}.`\n  );\n}\n\n\n// --------------------------------------------------\n// Return ONE aggregate object\n// --------------------------------------------------\n\nreturn [\n  {\n    json: {\n\n      research_version:\n        RESEARCH_VERSION,\n\n      provider:\n        \"google_gemini\",\n\n      model:\n        MODEL,\n\n      accounts_researched:\n        accountSummaries.length,\n\n      evidence_dimensions:\n        Object.keys(\n          valueDomains\n        ).length,\n\n      evidence_count:\n        evidenceRows.length,\n\n      validation_warning_count:\n        validationWarnings.length,\n\n      accounts:\n        accountSummaries,\n\n      validation_warnings:\n        validationWarnings,\n\n      evidence_rows:\n        evidenceRows\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2128,
+        -32
+      ],
+      "id": "86a341db-40f2-4e94-911c-b588bd49ab52",
+      "name": "Validate & Flatten Gemini Evidence V1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_PROJECT.supabase.co/rest/v1/account_evidence",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "on_conflict",
+              "value": "evidence_fingerprint"
+            },
+            {
+              "name": "select",
+              "value": "id,account_id,evidence_key,evidence_value,confidence,source_url,research_version,evidence_fingerprint"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.evidence_rows }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2320,
+        -32
+      ],
+      "id": "b771052a-868d-48b7-bee7-bb6f8da6ffdb",
+      "name": "Supabase Upsert Website Evidence",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase Service Role"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1904,
+        -16
+      ],
+      "id": "cacbb115-3214-48d3-9c8e-52d7bddc172c",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "amount": 15
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2144,
+        224
+      ],
+      "id": "c12d1694-4a7d-42ec-9776-2457f1b387e8",
+      "name": "Wait 15 sec",
+      "webhookId": "67d54d00-49f7-49f9-a470-1b8bb7f0df34"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Fetch Pilot Accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Pilot Accounts": {
+      "main": [
+        [
+          {
+            "node": "Build Balanced Website Crawl Jobs V1.3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Apify Website Crawler": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rank Research Pages V1": {
+      "main": [
+        [
+          {
+            "node": "Build Company Research Packets V1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Map Crawled Pages to Accounts V1.1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Apify Website Crawler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Crawled Pages to Accounts V1.1": {
+      "main": [
+        [
+          {
+            "node": "Rank Research Pages V1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Balanced Website Crawl Jobs V1.3": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Company Research Packets V1": {
+      "main": [
+        [
+          {
+            "node": "Build Gemini Evidence Request V1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Gemini Evidence Request V1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Website Evidence - Gemini": {
+      "main": [
+        [
+          {
+            "node": "Wait 15 sec",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Flatten Gemini Evidence V1": {
+      "main": [
+        [
+          {
+            "node": "Supabase Upsert Website Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [
+          {
+            "node": "Validate & Flatten Gemini Evidence V1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Website Evidence - Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 15 sec": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "cec35429-c6c0-4b8b-b885-8d2b1b1609f0",
+  "meta": {},
+  "nodeGroups": [],
+  "tags": []
+}

@@ -1,0 +1,212 @@
+{
+  "name": "GTM UTIL - SMTP2GO Email Broker V1 [PUBLIC SANITIZED]",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "operation"
+            },
+            {
+              "name": "sender"
+            },
+            {
+              "name": "to"
+            },
+            {
+              "name": "subject"
+            },
+            {
+              "name": "text_body"
+            },
+            {
+              "name": "task_key"
+            },
+            {
+              "name": "content_hash"
+            }
+          ]
+        }
+      },
+      "id": "00a18af5-dbb4-4491-8c9c-b048ec202b63",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -820,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\n\nconst LIVE_SEND_ENABLED = false; // HARD KILL SWITCH FOR V1.\n\nconst operation = String(input.operation || '').trim();\n\nif (!['validate_payload', 'send_email'].includes(operation)) {\n  throw new Error(`SMTP2GO broker rejected operation: ${operation}`);\n}\n\nconst sender = String(input.sender || '').trim();\nconst subject = String(input.subject || '').trim();\nconst textBody = String(input.text_body || '').trim();\nconst taskKey = String(input.task_key || '').trim();\nconst contentHash = String(input.content_hash || '').trim();\n\nlet to = input.to;\nif (typeof to === 'string') to = [to];\nif (!Array.isArray(to)) to = [];\n\nto = to.map(v => String(v || '').trim()).filter(Boolean);\n\nconst problems = [];\n\nif (!sender) problems.push('SENDER_REQUIRED');\nif (!subject) problems.push('SUBJECT_REQUIRED');\nif (!textBody) problems.push('TEXT_BODY_REQUIRED');\nif (!taskKey) problems.push('TASK_KEY_REQUIRED');\nif (!contentHash) problems.push('CONTENT_HASH_REQUIRED');\nif (to.length !== 1) problems.push('EXACTLY_ONE_RECIPIENT_REQUIRED');\nif (to.some(v => !v.includes('@'))) problems.push('INVALID_RECIPIENT');\n\nif (problems.length) {\n  throw new Error(`SMTP2GO payload rejected: ${problems.join(',')}`);\n}\n\nconst payload = {\n  sender,\n  to,\n  subject,\n  text_body: textBody,\n  fastaccept: true,\n  custom_headers: [\n    {\n      header: 'X-Saray-GTM-Task-Key',\n      value: taskKey\n    },\n    {\n      header: 'X-Saray-GTM-Content-Hash',\n      value: contentHash\n    }\n  ]\n};\n\nif (operation === 'send_email' && !LIVE_SEND_ENABLED) {\n  throw new Error(\n    'SMTP2GO_LIVE_SEND_DISABLED: broker V1 is intentionally hard-disabled for live sending.'\n  );\n}\n\nreturn [{\n  json: {\n    broker: 'smtp2go',\n    broker_version: 'SMTP2GO-BROKER-V1.0.0',\n    operation,\n    live_send_enabled: LIVE_SEND_ENABLED,\n    endpoint: 'https://api.smtp2go.com/v3/email/send',\n    payload\n  }\n}];"
+      },
+      "id": "54979f5b-4dbc-4bf7-9eaf-acbcade611dc",
+      "name": "Validate Envelope and Kill Switch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -580,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f6b450ac-bb67-446a-b4a5-37006ecec0d0",
+              "leftValue": "={{ $json.operation }}",
+              "rightValue": "send_email",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ab037277-cc0f-4ea8-a0de-4aa3bb09eb48",
+      "name": "Is Live Send Operation?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -340,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.smtp2go.com/v3/email/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.payload) }}",
+        "options": {}
+      },
+      "id": "6fc1ce1a-0d18-49f9-aa4e-60c08436529c",
+      "name": "SMTP2GO API - Credential Lives Here",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -80,
+        -120
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Validate Envelope and Kill Switch').first().json;\nconst raw = $input.first().json || {};\n\nconst data = raw.data || {};\nconst failed = Number(data.failed ?? 0);\nconst succeeded = Number(data.succeeded ?? 0);\nconst failures = Array.isArray(data.failures) ? data.failures : [];\nconst emailId = data.email_id ? String(data.email_id) : null;\n\nconst providerSucceeded =\n  succeeded >= 1 &&\n  failed === 0 &&\n  failures.length === 0 &&\n  Boolean(emailId);\n\nreturn [{\n  json: {\n    broker: 'smtp2go',\n    broker_version: req.broker_version,\n    operation: req.operation,\n    provider_succeeded: providerSucceeded,\n    provider_message_id: emailId,\n    succeeded,\n    failed,\n    failures,\n    raw_response: raw\n  }\n}];"
+      },
+      "id": "cd0cb8cf-d0cf-4ef3-9783-6bf189bef1cd",
+      "name": "Normalize SMTP2GO Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        180,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Validate Envelope and Kill Switch').first().json;\n\nreturn [{\n  json: {\n    broker: 'smtp2go',\n    broker_version: req.broker_version,\n    operation: 'validate_payload',\n    live_send_enabled: false,\n    payload_valid: true,\n    endpoint: req.endpoint,\n    provider_payload: req.payload\n  }\n}];"
+      },
+      "id": "d5283ed7-f119-497e-a076-9451c4dd8c88",
+      "name": "Return Dry-Run Validation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Validate Envelope and Kill Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Envelope and Kill Switch": {
+      "main": [
+        [
+          {
+            "node": "Is Live Send Operation?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Live Send Operation?": {
+      "main": [
+        [
+          {
+            "node": "SMTP2GO API - Credential Lives Here",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Dry-Run Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SMTP2GO API - Credential Lives Here": {
+      "main": [
+        [
+          {
+            "node": "Normalize SMTP2GO Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6131101c-b741-4e45-954e-1cfe80be4f23",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

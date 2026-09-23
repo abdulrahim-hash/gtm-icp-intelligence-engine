@@ -1,4 +1,4 @@
-# Website Intelligence V1A — Source Acquisition Pilot
+﻿# Website Intelligence V1A â€” Source Acquisition Pilot
 
 ## Objective
 
@@ -10,15 +10,15 @@ Pipeline:
 
 ```text
 5 pass_to_research accounts
-        ↓
+        â†“
 Apify Website Content Crawler
-        ↓
+        â†“
 clean website text / Markdown
-        ↓
-match crawled page → account
-        ↓
+        â†“
+match crawled page â†’ account
+        â†“
 deterministically rank useful pages
-        ↓
+        â†“
 inspect quality
 ```
 
@@ -44,16 +44,16 @@ The pilot deliberately mixes obvious-looking SMBs and an atypical/larger operato
 - MCC Commercial Cleaning LLC
 - C&W Services
 - Modern Mop Cleaning Services
-- Victory Lab Micro-Clean™
+- Victory Lab Micro-Cleanâ„¢
 
 Domains:
 
 ```text
-dallascommercialcleaningco.com
-officecleaningdallastx.com
-cwservices.com
-modernmopcleaning.com
-victorylabclean.com
+pilot-company-1.example
+pilot-company-2.example
+pilot-company-3.example
+pilot-company-4.example
+pilot-company-5.example
 ```
 
 ## n8n workflow
@@ -66,15 +66,15 @@ Nodes:
 
 ```text
 Manual Trigger
-    ↓
+    â†“
 Fetch Pilot Accounts
-    ↓
+    â†“
 Build Website Crawl Pilot V1
-    ↓
+    â†“
 Run Apify Website Crawler
-    ↓
+    â†“
 Map Crawled Pages to Accounts V1
-    ↓
+    â†“
 Rank Research Pages V1
 ```
 
@@ -104,7 +104,7 @@ discovery_gate_status
 eq.pass_to_research
 
 normalized_domain
-in.(dallascommercialcleaningco.com,officecleaningdallastx.com,cwservices.com,modernmopcleaning.com,victorylabclean.com)
+in.(pilot-company-1.example,pilot-company-2.example,pilot-company-3.example,pilot-company-4.example,pilot-company-5.example)
 
 order
 company_name.asc
@@ -245,15 +245,15 @@ After the crawl pilot passes:
 
 ```text
 selected website pages
-        ↓
+        â†“
 LLM evidence extractor
-        ↓
+        â†“
 strict JSON evidence
-        ↓
+        â†“
 validation
-        ↓
+        â†“
 account_evidence upsert
-        ↓
+        â†“
 human QA
 ```
 
@@ -270,4 +270,5 @@ The evidence extractor will target:
 - franchise_signal;
 - lead_capture_maturity.
 
-The existing `account_evidence.confidence` constraint is 0–100, so extractor confidence values will use that scale.
+The existing `account_evidence.confidence` constraint is 0â€“100, so extractor confidence values will use that scale.
+

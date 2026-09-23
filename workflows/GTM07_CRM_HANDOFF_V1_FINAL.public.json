@@ -1,0 +1,157 @@
+{
+  "name": "GTM 07 - CRM Handoff V1 FINAL - Supabase V3 [PUBLIC SANITIZED]",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "4fbc54e3-1f77-4b08-907a-1cffdbb96cd0",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c578345b-0acc-49a9-96b5-adec3fade130",
+              "name": "target_system",
+              "value": "hubspot",
+              "type": "string"
+            },
+            {
+              "id": "8748cc7c-d337-45db-984b-d6ac94c4dc93",
+              "name": "target_ref",
+              "value": "HUBSPOT_PORTAL_ID",
+              "type": "string"
+            },
+            {
+              "id": "c7718a2e-9cd0-4e09-9ade-65230da540d8",
+              "name": "crm_contract_version",
+              "value": "CRM-V1.0.0",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1f0e940b-227a-4a71-a344-6c217e5f4123",
+      "name": "Config - CRM Handoff",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1000,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_contact_crm_sync_plan_v1",
+            "rpc_body": "={{ { p_target_system: $json.target_system, p_target_ref: $json.target_ref, p_crm_contract_version: $json.crm_contract_version } }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "cc9deb48-580b-44d3-829d-40b0177feb7e",
+      "name": "Call Supabase Broker V3 - CRM Plan",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -760,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $input.first().json || {};\n\nif (out.broker !== 'supabase' || out.rpc_name !== 'gtm_contact_crm_sync_plan_v1') {\n  throw new Error('GTM 07 FINAL received unexpected Supabase broker response');\n}\nif (out.broker_version !== 'SB-BROKER-V3.0.0') {\n  throw new Error(`GTM 07 FINAL expected SB-BROKER-V3.0.0, got ${out.broker_version}`);\n}\n\nconst plan = Array.isArray(out.response) ? out.response : [];\n\nif (plan.length === 0) {\n  throw new Error('GTM 07 FINAL failed closed: CRM sync plan is empty');\n}\n\nconst creates = plan.filter(x => x.sync_action === 'create');\nconst updates = plan.filter(x => x.sync_action === 'update');\nconst noops = plan.filter(x => x.sync_action === 'noop');\n\nconst unsupported = plan.filter(x => !['create','update','noop'].includes(x.sync_action));\nif (unsupported.length) {\n  throw new Error('GTM 07 FINAL encountered unsupported sync_action');\n}\n\n/*\n * This final workflow deliberately does not auto-write contacts yet.\n * CREATE / UPDATE execution is gated behind the proven ledger claim/finalize\n * contract and will be exercised when new contacts enter the ready set.\n * Current pilot state should be 7 NOOP.\n */\nreturn [{\n  json: {\n    gtm07_final_plan_completed: true,\n    supabase_broker_v3_passed: true,\n    supabase_workflow_id: 'SUPABASE_BROKER_V3_WORKFLOW_ID',\n    total_contacts: plan.length,\n    create_actions: creates.length,\n    update_actions: updates.length,\n    noop_actions: noops.length,\n    write_required: creates.length + updates.length > 0,\n    current_pilot_expected_all_noop:\n      plan.length === 7 &&\n      creates.length === 0 &&\n      updates.length === 0 &&\n      noops.length === 7,\n    plan,\n    next_action:\n      creates.length + updates.length === 0\n        ? 'No CRM writes required. Handoff is idempotently synchronized.'\n        : 'New CRM writes are pending. Use ledger claim/finalize execution path before provider writes.'\n  }\n}];"
+      },
+      "id": "25de1d1a-9c0a-4db2-82da-5506ed4aea96",
+      "name": "GTM 07 FINAL Report - STOP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config - CRM Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config - CRM Handoff": {
+      "main": [
+        [
+          {
+            "node": "Call Supabase Broker V3 - CRM Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Supabase Broker V3 - CRM Plan": {
+      "main": [
+        [
+          {
+            "node": "GTM 07 FINAL Report - STOP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "fbec47ed-68d9-4629-b434-3924fb3bd598",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

@@ -1,0 +1,669 @@
+{
+  "name": "GTM 05 - Contact Acquisition V1 FINAL [PUBLIC SANITIZED]",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "07b77057-ec1a-47af-83f9-4cb0cc138729",
+      "name": "Manual Trigger - Safe Dry Run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1240,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_contact_company_discovery_plan_v1",
+            "rpc_body": "={{ { p_provider_name: 'prospeo', p_provider_contract_version: 'CA-V1.1.0-COMPANY' } }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "62c18807-5ded-4413-9f84-846042d737f6",
+      "name": "Supabase V3 - Company Discovery Plan",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -980,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_project01_qa_report_v1",
+            "rpc_body": "={{ {} }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "0ed3d7f9-a287-4794-86cf-86d9763770a5",
+      "name": "Supabase V3 - QA Baseline",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -720,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const planOut = $('Supabase V3 - Company Discovery Plan').first().json || {};\nconst qaOut = $('Supabase V3 - QA Baseline').first().json || {};\n\nfunction assertBroker(out, rpc) {\n  if (out.broker !== 'supabase') {\n    throw new Error(`GTM05 FINAL expected supabase broker for ${rpc}`);\n  }\n  if (out.broker_version !== 'SB-BROKER-V3.0.0') {\n    throw new Error(`GTM05 FINAL expected SB-BROKER-V3.0.0, got ${out.broker_version}`);\n  }\n  if (out.rpc_name !== rpc) {\n    throw new Error(`GTM05 FINAL RPC mismatch: expected ${rpc}, got ${out.rpc_name}`);\n  }\n  return Array.isArray(out.response) ? out.response : [];\n}\n\nconst plan = assertBroker(planOut, 'gtm_contact_company_discovery_plan_v1');\nconst qaRows = assertBroker(qaOut, 'gtm_project01_qa_report_v1');\n\nif (plan.length !== 5) {\n  throw new Error(`GTM05 FINAL expected 5 company discovery rows, got ${plan.length}`);\n}\nif (qaRows.length !== 1) {\n  throw new Error(`GTM05 FINAL expected one QA row, got ${qaRows.length}`);\n}\n\nconst expectedSeniorities = [\n  'Founder/Owner',\n  'C-Suite',\n  'Partner',\n  'Vice President',\n  'Head',\n  'Director',\n  'Manager'\n];\n\nconst accountIds = new Set();\nconst searchKeys = new Set();\nconst ranks = [];\n\nfor (const row of plan) {\n  if (!row.account_id || !row.company_name || !row.normalized_domain || !row.search_key) {\n    throw new Error('GTM05 FINAL plan contains a row missing account/company/domain/search_key');\n  }\n\n  if (row.persona_group !== 'seniority_discovery') {\n    throw new Error(`GTM05 FINAL expected seniority_discovery, got ${row.persona_group}`);\n  }\n\n  if (Number(row.search_order) !== 1) {\n    throw new Error(`GTM05 FINAL expected search_order=1 for ${row.company_name}`);\n  }\n\n  const seniorities = Array.isArray(row.seniority_filters) ? row.seniority_filters : [];\n  if (\n    seniorities.length !== expectedSeniorities.length ||\n    expectedSeniorities.some(x => !seniorities.includes(x))\n  ) {\n    throw new Error(`GTM05 FINAL seniority filter mismatch for ${row.company_name}`);\n  }\n\n  accountIds.add(row.account_id);\n  searchKeys.add(row.search_key);\n  ranks.push(Number(row.account_priority_rank));\n}\n\nif (accountIds.size !== 5 || searchKeys.size !== 5) {\n  throw new Error('GTM05 FINAL plan is not one deterministic search per eligible account');\n}\n\nranks.sort((a,b) => a-b);\nif (JSON.stringify(ranks) !== JSON.stringify([1,2,3,4,5])) {\n  throw new Error(`GTM05 FINAL expected priority ranks 1..5, got ${ranks.join(',')}`);\n}\n\nconst qa = qaRows[0];\n\nif (qa.state !== 'PRE_SEND_CONTROLLED' || qa.all_checks_pass !== true) {\n  throw new Error(`GTM05 FINAL baseline QA is not green: ${qa.state}`);\n}\n\nreturn [{\n  json: {\n    gtm05_final_dry_run_completed: true,\n    acquisition_contract_version: 'CA-V1.1.0-COMPANY',\n    strategy: 'company_domain_plus_seniority_then_local_persona',\n    provider: 'prospeo',\n\n    eligible_accounts: accountIds.size,\n    planned_searches: plan.length,\n    one_search_per_account: true,\n    priority_ranks: ranks,\n    seniority_filters: expectedSeniorities,\n\n    pre_enrichment_only: true,\n    email_reveal_allowed: false,\n    mobile_reveal_allowed: false,\n\n    provider_http_call_performed: false,\n    provider_credits_spent: 0,\n    database_mutation_performed: false,\n\n    current_qa_state: qa.state,\n    current_qa_all_checks_pass: qa.all_checks_pass,\n\n    supabase_broker_v3_passed: true,\n    supabase_workflow_id: 'SUPABASE_BROKER_V3_WORKFLOW_ID',\n\n    live_entrypoint_configured: true,\n    live_entrypoint_requires_exact_confirmation: 'EXECUTE_PROSPEO',\n\n    gtm05_final_dry_run_all_checks_pass: true,\n\n    next_action:\n      'Keep live execution disabled for the frozen pilot. GTM05 FINAL is ready for controlled per-account acquisition when expansion begins.'\n  }\n}];"
+      },
+      "id": "809f29ad-f9f7-48a8-9138-d2f3f6d11f52",
+      "name": "GTM 05 FINAL Dry Run Report - STOP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -440,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "account_priority_rank"
+            },
+            {
+              "name": "run_mode"
+            },
+            {
+              "name": "execute_provider_call"
+            }
+          ]
+        }
+      },
+      "id": "f5ac34c4-b987-4a29-88e5-b709d983ea80",
+      "name": "When Called - Controlled Acquisition",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1240,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\n\nconst rank = Number(input.account_priority_rank);\nconst runMode = String(input.run_mode || 'pilot').trim().toLowerCase();\nconst confirmation = String(input.execute_provider_call || '').trim();\n\nif (!Number.isInteger(rank) || rank < 1) {\n  throw new Error('GTM05 FINAL account_priority_rank must be an integer >= 1');\n}\n\nif (!['pilot','full','replay'].includes(runMode)) {\n  throw new Error(`GTM05 FINAL unsupported run_mode: ${runMode}`);\n}\n\nif (confirmation !== 'EXECUTE_PROSPEO') {\n  throw new Error(\n    'GTM05 FINAL live provider call blocked. execute_provider_call must equal EXECUTE_PROSPEO exactly.'\n  );\n}\n\nreturn [{\n  json: {\n    account_priority_rank: rank,\n    run_mode: runMode,\n    provider_name: 'prospeo',\n    provider_contract_version: 'CA-V1.1.0-COMPANY',\n    max_person_per_company: 25,\n    live_provider_call_confirmed: true\n  }\n}];"
+      },
+      "id": "f972f0c2-f801-475b-a446-4c2aae0e2b35",
+      "name": "Validate Explicit Live Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -990,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_seed_contact_company_discovery_run_v1",
+            "rpc_body": "={{ { p_provider_name: $json.provider_name, p_run_mode: $json.run_mode, p_provider_contract_version: $json.provider_contract_version, p_metadata: { stage: 'GTM05_FINAL', strategy: 'company_domain_plus_seniority_then_local_persona' } } }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "9fe83144-b01b-440b-b75d-268c9dac571f",
+      "name": "Supabase V3 - Seed Company Discovery",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -740,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Validate Explicit Live Confirmation').first().json;\nconst out = $input.first().json || {};\n\nif (out.broker !== 'supabase' || out.broker_version !== 'SB-BROKER-V3.0.0') {\n  throw new Error('GTM05 FINAL company discovery seed did not return from Supabase V3');\n}\nif (out.rpc_name !== 'gtm_seed_contact_company_discovery_run_v1') {\n  throw new Error(`GTM05 FINAL seed RPC mismatch: ${out.rpc_name}`);\n}\n\nconst rows = Array.isArray(out.response) ? out.response : [];\nif (rows.length !== 1 || !rows[0]?.run_id) {\n  throw new Error('GTM05 FINAL company discovery seed returned no canonical run');\n}\n\nreturn [{\n  json: {\n    ...cfg,\n    acquisition_run_id: rows[0].run_id,\n    acquisition_run_key: rows[0].run_key,\n    eligible_account_count: Number(rows[0].eligible_account_count),\n    planned_search_count: Number(rows[0].planned_search_count),\n    newly_inserted_search_count: Number(rows[0].newly_inserted_search_count),\n    existing_search_count: Number(rows[0].existing_search_count)\n  }\n}];"
+      },
+      "id": "c43c3b0d-c14a-491f-bfcf-9aeec2cdfb5f",
+      "name": "Validate Seed Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_claim_contact_provider_search_v1",
+            "rpc_body": "={{ { p_provider_name: $json.provider_name, p_provider_contract_version: $json.provider_contract_version, p_account_priority_rank: $json.account_priority_rank, p_search_order: 1 } }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "d0b7e185-1a35-49b3-aef1-bc42e780440c",
+      "name": "Supabase V3 - Claim Provider Search",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -250,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Validate Seed Result').first().json;\nconst out = $input.first().json || {};\n\nif (out.broker !== 'supabase' || out.broker_version !== 'SB-BROKER-V3.0.0') {\n  throw new Error('GTM05 FINAL provider-search claim did not return from Supabase V3');\n}\nif (out.rpc_name !== 'gtm_claim_contact_provider_search_v1') {\n  throw new Error(`GTM05 FINAL claim RPC mismatch: ${out.rpc_name}`);\n}\n\nconst rows = Array.isArray(out.response) ? out.response : [];\nif (rows.length !== 1) {\n  throw new Error(\n    `GTM05 FINAL expected exactly one claimed provider search, got ${rows.length}`\n  );\n}\n\nconst claim = rows[0];\n\nif (\n  !claim.search_key ||\n  !claim.normalized_domain ||\n  !claim.company_name ||\n  claim.persona_group !== 'seniority_discovery'\n) {\n  throw new Error('GTM05 FINAL claimed search is missing required V1.1 fields');\n}\n\nconst seniorities = [\n  'Founder/Owner',\n  'C-Suite',\n  'Partner',\n  'Vice President',\n  'Head',\n  'Director',\n  'Manager'\n];\n\nreturn [{\n  json: {\n    ...cfg,\n    ...claim,\n    provider_name: 'prospeo',\n    provider_contract_version: 'CA-V1.1.0-COMPANY',\n    seniority_filters: seniorities,\n    prospeo_request_body: {\n      page: 1,\n      filters: {\n        company: {\n          websites: {\n            include: [claim.normalized_domain]\n          }\n        },\n        person_seniority: {\n          include: seniorities\n        },\n        max_person_per_company: 25\n      }\n    },\n    enrichment_allowed: false,\n    email_reveal_allowed: false,\n    mobile_reveal_allowed: false\n  }\n}];"
+      },
+      "id": "7beb6356-2838-46b1-b423-1b63fb742a14",
+      "name": "Build Validated Prospeo Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.prospeo.io/search-person",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.prospeo_request_body) }}",
+        "options": {}
+      },
+      "id": "7a7fdad5-503a-419e-9a54-703786008263",
+      "name": "Prospeo - Company Seniority Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        270,
+        220
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PROSPEO_CREDENTIAL_ID",
+          "name": "Prospeo Header Auth"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const claim = $('Build Validated Prospeo Search').first().json;\nconst response = $input.first().json ?? {};\n\nlet providerPayload = null;\n\nif (response?.error === false && Array.isArray(response?.results)) {\n  providerPayload = response;\n} else {\n  const candidates = [\n    response?.error?.message,\n    response?.message,\n    response?.body\n  ].filter(v => typeof v === 'string');\n\n  for (const text of candidates) {\n    const first = text.indexOf('{');\n    const last = text.lastIndexOf('}');\n    if (first >= 0 && last > first) {\n      const inner = text.slice(first, last + 1).replace(/\\\\\"/g, '\"');\n      try {\n        const parsed = JSON.parse(inner);\n        if (parsed && typeof parsed === 'object') {\n          providerPayload = parsed;\n          break;\n        }\n      } catch (_) {}\n    }\n  }\n}\n\nconst success =\n  providerPayload?.error === false &&\n  Array.isArray(providerPayload?.results);\n\nconst providerErrorCode =\n  providerPayload?.error === true\n    ? providerPayload?.error_code ?? null\n    : null;\n\nconst results = success ? providerPayload.results : [];\nconst pagination =\n  success && providerPayload.pagination\n    ? providerPayload.pagination\n    : null;\n\nconst freeSearch =\n  success ? Boolean(providerPayload.free) : null;\n\nconst statusCandidate = [\n  response?.error?.status,\n  response?.statusCode,\n  response?.status\n].find(v => Number.isInteger(Number(v)));\n\nlet httpStatus =\n  success\n    ? 200\n    : statusCandidate !== undefined\n      ? Number(statusCandidate)\n      : null;\n\nlet finishStatus;\nlet errorCode = null;\nlet errorMessage = null;\nlet nextRetryAt = null;\n\nif (success) {\n  finishStatus = results.length > 0 ? 'succeeded' : 'no_results';\n} else if (providerErrorCode === 'NO_RESULTS') {\n  finishStatus = 'no_results';\n  errorCode = 'NO_RESULTS';\n  errorMessage = 'Prospeo returned NO_RESULTS for company seniority discovery.';\n  if (httpStatus === null) httpStatus = 400;\n} else {\n  errorCode = String(\n    providerErrorCode ??\n    response?.error?.code ??\n    'PROSPEO_UNPARSED_ERROR'\n  );\n\n  errorMessage = String(\n    providerPayload?.filter_error ??\n    providerPayload?.message ??\n    response?.error?.message ??\n    response?.message ??\n    'Prospeo returned an unparsed error'\n  ).slice(0, 2000);\n\n  if (httpStatus === 429 || (httpStatus !== null && httpStatus >= 500)) {\n    finishStatus = 'retryable_failed';\n    nextRetryAt =\n      new Date(Date.now() + 60 * 60 * 1000).toISOString();\n  } else {\n    finishStatus = 'permanent_failed';\n  }\n}\n\nconst normalizedPeople = results.map((entry, index) => {\n  const p = entry?.person ?? {};\n  const c = entry?.company ?? {};\n\n  return {\n    result_rank: index + 1,\n    provider_contact_id: p.person_id ?? null,\n    first_name: p.first_name ?? null,\n    last_name: p.last_name ?? null,\n    full_name: p.full_name ?? null,\n    job_title: p.current_job_title ?? null,\n    seniority: p.seniority ?? p.current_job_seniority ?? null,\n    headline: p.headline ?? null,\n    linkedin_url: p.linkedin_url ?? null,\n    company_name: c.name ?? c.company_name ?? null,\n    company_website: c.website ?? c.domain ?? null,\n    company_id: c.company_id ?? null,\n    email_status_preview: p?.email?.status ?? null,\n    email_revealed: Boolean(p?.email?.revealed),\n    mobile_status_preview: p?.mobile?.status ?? null,\n    mobile_revealed: Boolean(p?.mobile?.revealed)\n  };\n});\n\nif (\n  normalizedPeople.some(p =>\n    p.email_revealed === true ||\n    p.mobile_revealed === true\n  )\n) {\n  finishStatus = 'permanent_failed';\n  errorCode = 'PRE_ENRICHMENT_REVEAL_VIOLATION';\n  errorMessage =\n    'Provider response unexpectedly contained revealed email/mobile data during acquisition.';\n}\n\nreturn [{\n  json: {\n    ...claim,\n\n    finish_status: finishStatus,\n    provider_result_count: results.length,\n    last_http_status: httpStatus,\n    last_error_code: errorCode,\n    last_error_message: errorMessage,\n    next_retry_at: nextRetryAt,\n\n    prospeo_free_search: freeSearch,\n    prospeo_pagination: pagination,\n    normalized_people: normalizedPeople,\n\n    provider_call_performed: true,\n\n    finish_response_metadata: {\n      stage: 'GTM05_FINAL',\n      strategy: 'company_domain_plus_seniority_then_local_persona',\n      query_domain: claim.normalized_domain,\n      seniority_filters: claim.seniority_filters,\n      returned_people: results.length,\n      free_search: freeSearch,\n      pagination,\n      enrichment_called: false,\n      email_reveal_allowed: false,\n      mobile_reveal_allowed: false,\n      normalized_people: normalizedPeople\n    }\n  }\n}];"
+      },
+      "id": "8eca524e-eb83-442d-acdd-a1a1571c34d0",
+      "name": "Normalize Prospeo Response - Never Reset Attempt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        530,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_finish_contact_provider_search_v1",
+            "rpc_body": "={{ { p_search_key: $json.search_key, p_status: $json.finish_status, p_provider_request_id: null, p_provider_result_count: $json.provider_result_count, p_eligible_result_count: null, p_last_http_status: $json.last_http_status, p_last_error_code: $json.last_error_code, p_last_error_message: $json.last_error_message, p_response_metadata: $json.finish_response_metadata, p_next_retry_at: $json.next_retry_at } }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "00428601-ea62-4b50-82dc-f48939355da5",
+      "name": "Supabase V3 - Finish Provider Attempt",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        790,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f1d7ccc3-dec4-4f2e-8423-e8d1423b97b1",
+              "leftValue": "={{ $('Normalize Prospeo Response - Never Reset Attempt').first().json.finish_status }}",
+              "rightValue": "succeeded",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "329facce-d440-4a7c-a2be-8fcf370b3c35",
+      "name": "Provider Search Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_ingest_contact_provider_results_v1",
+            "rpc_body": "={{ { p_search_key: $('Normalize Prospeo Response - Never Reset Attempt').first().json.search_key, p_results: $('Normalize Prospeo Response - Never Reset Attempt').first().json.normalized_people, p_observed_at: new Date().toISOString() } }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "6d0dc9b1-776a-4cce-8d23-9c180bd63828",
+      "name": "Supabase V3 - Ingest and Classify Results",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1300,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const normalized =\n  $('Normalize Prospeo Response - Never Reset Attempt').first().json;\n\nconst finishOut =\n  $('Supabase V3 - Finish Provider Attempt').first().json || {};\n\nconst ingestOut = $input.first().json || {};\n\nif (\n  finishOut.broker !== 'supabase' ||\n  finishOut.broker_version !== 'SB-BROKER-V3.0.0' ||\n  finishOut.rpc_name !== 'gtm_finish_contact_provider_search_v1'\n) {\n  throw new Error('GTM05 FINAL provider finish ledger validation failed');\n}\n\nconst finishRows = Array.isArray(finishOut.response)\n  ? finishOut.response\n  : [];\n\nif (finishRows.length !== 1) {\n  throw new Error(`GTM05 FINAL expected one finish row, got ${finishRows.length}`);\n}\n\nif (\n  ingestOut.broker !== 'supabase' ||\n  ingestOut.broker_version !== 'SB-BROKER-V3.0.0' ||\n  ingestOut.rpc_name !== 'gtm_ingest_contact_provider_results_v1'\n) {\n  throw new Error(\n    'GTM05 FINAL provider result ingest failed after the provider attempt was already durably recorded.'\n  );\n}\n\nconst ingestRows = Array.isArray(ingestOut.response)\n  ? ingestOut.response\n  : [];\n\nif (ingestRows.length !== 1 || !ingestRows[0]?.search_id) {\n  throw new Error(\n    'GTM05 FINAL provider result ingest returned no canonical ingestion row. Do NOT repeat the provider call; replay normalized results from ledger metadata.'\n  );\n}\n\nconst ingest = ingestRows[0];\n\nreturn [{\n  json: {\n    gtm05_live_acquisition_completed: true,\n\n    provider: 'prospeo',\n    acquisition_contract_version: 'CA-V1.1.0-COMPANY',\n    strategy: 'company_domain_plus_seniority_then_local_persona',\n\n    company_name: normalized.company_name,\n    normalized_domain: normalized.normalized_domain,\n    account_priority_rank: normalized.account_priority_rank,\n\n    search_key: normalized.search_key,\n    provider_search_status: finishRows[0].status,\n    attempt_count: finishRows[0].attempt_count,\n\n    provider_call_performed: true,\n    provider_result_count: normalized.provider_result_count,\n\n    observation_inserted_count: Number(ingest.observation_inserted_count),\n    observation_updated_count: Number(ingest.observation_updated_count),\n    eligible_count: Number(ingest.eligible_count),\n    ineligible_count: Number(ingest.ineligible_count),\n    contact_inserted_count: Number(ingest.contact_inserted_count),\n    contact_matched_updated_count: Number(ingest.contact_matched_updated_count),\n    canonical_contact_count: Number(ingest.canonical_contact_count),\n\n    enrichment_called: false,\n    email_reveal_allowed: false,\n    mobile_reveal_allowed: false,\n\n    supabase_broker_v3_passed: true,\n\n    next_action:\n      'Run GTM06 FINAL only for verified-email enrichment candidates. Do not reveal mobile.'\n  }\n}];"
+      },
+      "id": "5dbed91f-b96a-4f5d-b476-37120e78d62e",
+      "name": "GTM 05 FINAL Live Success Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1570,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const normalized =\n  $('Normalize Prospeo Response - Never Reset Attempt').first().json;\n\nconst finishOut =\n  $('Supabase V3 - Finish Provider Attempt').first().json || {};\n\nif (\n  finishOut.broker !== 'supabase' ||\n  finishOut.broker_version !== 'SB-BROKER-V3.0.0' ||\n  finishOut.rpc_name !== 'gtm_finish_contact_provider_search_v1'\n) {\n  throw new Error('GTM05 FINAL non-success finish ledger validation failed');\n}\n\nconst rows = Array.isArray(finishOut.response)\n  ? finishOut.response\n  : [];\n\nif (rows.length !== 1) {\n  throw new Error(`GTM05 FINAL expected one finish row, got ${rows.length}`);\n}\n\nreturn [{\n  json: {\n    gtm05_live_acquisition_completed: true,\n\n    provider: 'prospeo',\n    acquisition_contract_version: 'CA-V1.1.0-COMPANY',\n    strategy: 'company_domain_plus_seniority_then_local_persona',\n\n    company_name: normalized.company_name,\n    normalized_domain: normalized.normalized_domain,\n    account_priority_rank: normalized.account_priority_rank,\n\n    search_key: normalized.search_key,\n    provider_search_status: rows[0].status,\n    attempt_count: rows[0].attempt_count,\n\n    provider_call_performed: true,\n    provider_result_count: normalized.provider_result_count,\n\n    enrichment_called: false,\n    contacts_inserted: false,\n\n    error_code: normalized.last_error_code,\n    error: normalized.last_error_message,\n    next_retry_at: normalized.next_retry_at,\n\n    next_action:\n      normalized.finish_status === 'no_results'\n        ? 'No eligible provider results were returned. Do not spend an enrichment credit.'\n        : normalized.finish_status === 'retryable_failed'\n          ? 'Wait until next_retry_at, then claim the same ledger task. Attempt history must remain intact.'\n          : 'Provider search failed permanently. Review the exact provider error before any retry.'\n  }\n}];"
+      },
+      "id": "4368117b-a72c-4742-aa45-991fd7fefad1",
+      "name": "GTM 05 FINAL Live Non-Success Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        340
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger - Safe Dry Run": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - Company Discovery Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Company Discovery Plan": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - QA Baseline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - QA Baseline": {
+      "main": [
+        [
+          {
+            "node": "GTM 05 FINAL Dry Run Report - STOP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Called - Controlled Acquisition": {
+      "main": [
+        [
+          {
+            "node": "Validate Explicit Live Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Explicit Live Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - Seed Company Discovery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Seed Company Discovery": {
+      "main": [
+        [
+          {
+            "node": "Validate Seed Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Seed Result": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - Claim Provider Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Claim Provider Search": {
+      "main": [
+        [
+          {
+            "node": "Build Validated Prospeo Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Validated Prospeo Search": {
+      "main": [
+        [
+          {
+            "node": "Prospeo - Company Seniority Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prospeo - Company Seniority Search": {
+      "main": [
+        [
+          {
+            "node": "Normalize Prospeo Response - Never Reset Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Prospeo Response - Never Reset Attempt": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - Finish Provider Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Finish Provider Attempt": {
+      "main": [
+        [
+          {
+            "node": "Provider Search Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Provider Search Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - Ingest and Classify Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GTM 05 FINAL Live Non-Success Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Ingest and Classify Results": {
+      "main": [
+        [
+          {
+            "node": "GTM 05 FINAL Live Success Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "14188ac6-8d99-4f9e-938d-72925e7f4ec8",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

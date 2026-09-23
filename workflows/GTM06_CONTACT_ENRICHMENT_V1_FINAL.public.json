@@ -1,0 +1,690 @@
+{
+  "name": "GTM 06 - Contact Enrichment V1 FINAL [PUBLIC SANITIZED]",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "b788f822-c537-44e3-97df-76635fa94803",
+      "name": "Manual Trigger - Safe Dry Run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1240,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_contact_email_enrichment_plan_v1",
+            "rpc_body": "={{ { p_provider_name: 'prospeo', p_provider_contract_version: 'CE-V1.0.0' } }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "b7b9ac3c-bf02-496b-a0b0-bb681d352b23",
+      "name": "Supabase V3 - Current Enrichment Plan",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -980,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_project01_qa_report_v1",
+            "rpc_body": "={{ {} }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "eb1210c6-93e6-4d21-bb48-fcaa789d0db4",
+      "name": "Supabase V3 - QA Baseline",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -720,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const planOut =\n  $('Supabase V3 - Current Enrichment Plan').first().json || {};\nconst qaOut =\n  $('Supabase V3 - QA Baseline').first().json || {};\n\nfunction rowsFromBroker(out, rpc) {\n  if (out.broker !== 'supabase') {\n    throw new Error(`GTM06 FINAL expected Supabase broker for ${rpc}`);\n  }\n  if (out.broker_version !== 'SB-BROKER-V3.0.0') {\n    throw new Error(\n      `GTM06 FINAL expected SB-BROKER-V3.0.0, got ${out.broker_version}`\n    );\n  }\n  if (out.rpc_name !== rpc) {\n    throw new Error(\n      `GTM06 FINAL expected ${rpc}, got ${out.rpc_name}`\n    );\n  }\n  return Array.isArray(out.response) ? out.response : [];\n}\n\nconst plan = rowsFromBroker(\n  planOut,\n  'gtm_contact_email_enrichment_plan_v1'\n);\n\nconst qaRows = rowsFromBroker(\n  qaOut,\n  'gtm_project01_qa_report_v1'\n);\n\nif (qaRows.length !== 1) {\n  throw new Error(\n    `GTM06 FINAL expected exactly one QA report, got ${qaRows.length}`\n  );\n}\n\nconst qa = qaRows[0];\n\nif (qa.state !== 'PRE_SEND_CONTROLLED' || qa.all_checks_pass !== true) {\n  throw new Error(\n    `GTM06 FINAL baseline QA is not green: ${qa.state}`\n  );\n}\n\n// Current frozen pilot has seven verified canonical emails,\n// therefore the enrichment candidate plan must now be empty.\nif (plan.length !== 0) {\n  const summary = plan\n    .map(x =>\n      `${x.candidate_priority_rank}:${x.full_name} [${x.persona}]`\n    )\n    .join(' | ');\n\n  throw new Error(\n    `GTM06 FINAL expected 0 remaining enrichment candidates in the frozen pilot, got ${plan.length}: ${summary}`\n  );\n}\n\nreturn [{\n  json: {\n    gtm06_final_dry_run_completed: true,\n\n    enrichment_contract_version: 'CE-V1.0.0',\n    provider: 'prospeo',\n    endpoint: '/enrich-person',\n\n    current_remaining_candidates: plan.length,\n    current_pilot_fully_enriched: true,\n\n    only_verified_email: true,\n    mobile_enrichment_allowed: false,\n    serialized_single_contact_execution: true,\n    delay_seconds_before_provider_call: 2,\n\n    provider_http_call_performed: false,\n    provider_credits_spent: 0,\n    database_mutation_performed: false,\n\n    retry_policy: {\n      http_429: 'retryable_failed',\n      http_5xx: 'retryable_failed',\n      internal_error: 'retryable_failed',\n      retry_delay_minutes: 60,\n      attempt_count_is_never_reset: true\n    },\n\n    current_qa_state: qa.state,\n    current_qa_all_checks_pass: qa.all_checks_pass,\n\n    supabase_broker_v3_passed: true,\n    supabase_workflow_id: 'SUPABASE_BROKER_V3_WORKFLOW_ID',\n\n    live_entrypoint_configured: true,\n    live_entrypoint_requires_exact_confirmation:\n      'EXECUTE_PROSPEO_ENRICH',\n\n    gtm06_final_dry_run_all_checks_pass: true,\n\n    next_action:\n      'Keep enrichment live execution disabled for the frozen pilot. Use the controlled entrypoint only when GTM05 creates new verified-email enrichment candidates.'\n  }\n}];"
+      },
+      "id": "7b0bce3e-b420-43d9-a089-3850cb746499",
+      "name": "GTM 06 FINAL Dry Run Report - STOP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -440,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "execution_mode"
+            },
+            {
+              "name": "candidate_priority_rank"
+            },
+            {
+              "name": "run_mode"
+            },
+            {
+              "name": "max_contacts"
+            },
+            {
+              "name": "max_credit_budget"
+            },
+            {
+              "name": "execute_provider_call"
+            }
+          ]
+        }
+      },
+      "id": "bc925635-dc5a-4868-a16a-42f5f3581d8c",
+      "name": "When Called - Controlled Enrichment",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1240,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\n\nconst executionMode =\n  String(input.execution_mode || 'fresh').trim().toLowerCase();\n\nconst rank = Number(input.candidate_priority_rank);\nconst runMode =\n  String(input.run_mode || 'pilot').trim().toLowerCase();\n\nconst maxContacts = Number(input.max_contacts ?? 1);\nconst maxCreditBudget = Number(input.max_credit_budget ?? 1);\n\nconst confirmation =\n  String(input.execute_provider_call || '').trim();\n\nif (!['fresh','retry'].includes(executionMode)) {\n  throw new Error(\n    `GTM06 FINAL execution_mode must be fresh or retry, got ${executionMode}`\n  );\n}\n\nif (!Number.isInteger(rank) || rank < 1) {\n  throw new Error(\n    'GTM06 FINAL candidate_priority_rank must be an integer >= 1'\n  );\n}\n\nif (!['pilot','full','replay'].includes(runMode)) {\n  throw new Error(`GTM06 FINAL unsupported run_mode: ${runMode}`);\n}\n\nif (!Number.isInteger(maxContacts) || maxContacts < 1 || maxContacts > 25) {\n  throw new Error(\n    'GTM06 FINAL max_contacts must be an integer from 1 to 25'\n  );\n}\n\nif (\n  !Number.isInteger(maxCreditBudget) ||\n  maxCreditBudget < 1 ||\n  maxCreditBudget > 25\n) {\n  throw new Error(\n    'GTM06 FINAL max_credit_budget must be an integer from 1 to 25'\n  );\n}\n\nif (maxCreditBudget < maxContacts) {\n  throw new Error(\n    'GTM06 FINAL max_credit_budget must be >= max_contacts'\n  );\n}\n\nif (executionMode === 'fresh' && rank > maxContacts) {\n  throw new Error(\n    `GTM06 FINAL fresh execution rank ${rank} exceeds max_contacts ${maxContacts}. Seed enough tasks to include the requested rank.`\n  );\n}\n\nif (confirmation !== 'EXECUTE_PROSPEO_ENRICH') {\n  throw new Error(\n    'GTM06 FINAL provider call blocked. execute_provider_call must equal EXECUTE_PROSPEO_ENRICH exactly.'\n  );\n}\n\nreturn [{\n  json: {\n    execution_mode: executionMode,\n    candidate_priority_rank: rank,\n    run_mode: runMode,\n    max_contacts: maxContacts,\n    max_credit_budget: maxCreditBudget,\n\n    provider_name: 'prospeo',\n    provider_contract_version: 'CE-V1.0.0',\n\n    only_verified_email: true,\n    enrich_mobile: false,\n\n    live_provider_call_confirmed: true\n  }\n}];"
+      },
+      "id": "975d2ad1-faa8-45ee-b793-2ae23e09a1ad",
+      "name": "Validate Controlled Enrichment Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -990,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c8edb9d4-7ade-4a36-95d9-18ce004ab58f",
+              "leftValue": "={{ $json.execution_mode }}",
+              "rightValue": "fresh",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "eea6c388-0fa5-4ed2-9cb3-578c7564939f",
+      "name": "Fresh Run?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -750,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_seed_contact_email_enrichment_run_v1",
+            "rpc_body": "={{ { p_provider_name: $('Validate Controlled Enrichment Input').first().json.provider_name, p_run_mode: $('Validate Controlled Enrichment Input').first().json.run_mode, p_provider_contract_version: $('Validate Controlled Enrichment Input').first().json.provider_contract_version, p_max_contacts: $('Validate Controlled Enrichment Input').first().json.max_contacts, p_max_credit_budget: $('Validate Controlled Enrichment Input').first().json.max_credit_budget, p_metadata: { stage: 'GTM06_FINAL', only_verified_email: true, enrich_mobile: false, serialized_single_contact_execution: true } } }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "1583d758-ea2e-4a86-8277-37da2a9cd974",
+      "name": "Supabase V3 - Seed Enrichment Run",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -500,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg =\n  $('Validate Controlled Enrichment Input').first().json;\n\nconst out = $input.first().json || {};\n\nif (\n  out.broker !== 'supabase' ||\n  out.broker_version !== 'SB-BROKER-V3.0.0' ||\n  out.rpc_name !== 'gtm_seed_contact_email_enrichment_run_v1'\n) {\n  throw new Error(\n    'GTM06 FINAL seed did not return through Supabase Broker V3'\n  );\n}\n\nconst rows = Array.isArray(out.response) ? out.response : [];\n\nif (rows.length !== 1 || !rows[0]?.run_id) {\n  throw new Error(\n    `GTM06 FINAL expected one canonical enrichment run, got ${rows.length}`\n  );\n}\n\nconst seed = rows[0];\n\nif (Number(seed.planned_task_count) < cfg.candidate_priority_rank) {\n  throw new Error(\n    `GTM06 FINAL requested rank ${cfg.candidate_priority_rank} but run contains only ${seed.planned_task_count} planned task(s)`\n  );\n}\n\nreturn [{\n  json: {\n    ...cfg,\n    enrichment_run_id: seed.run_id,\n    enrichment_run_key: seed.run_key,\n    eligible_contact_count: Number(seed.eligible_contact_count),\n    planned_task_count: Number(seed.planned_task_count),\n    max_credit_budget: Number(seed.max_credit_budget)\n  }\n}];"
+      },
+      "id": "2f7f6708-8443-4cc5-9cae-cb9366e0778c",
+      "name": "Validate Seed Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -250,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_claim_contact_email_enrichment_v1",
+            "rpc_body": "={{ { p_provider_name: $('Validate Controlled Enrichment Input').first().json.provider_name, p_provider_contract_version: $('Validate Controlled Enrichment Input').first().json.provider_contract_version, p_candidate_priority_rank: $('Validate Controlled Enrichment Input').first().json.candidate_priority_rank } }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "24c735be-d2f2-4bd1-bdf5-65f74454b23f",
+      "name": "Supabase V3 - Claim Enrichment Task",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        20,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg =\n  $('Validate Controlled Enrichment Input').first().json;\n\nconst out = $input.first().json || {};\n\nif (\n  out.broker !== 'supabase' ||\n  out.broker_version !== 'SB-BROKER-V3.0.0' ||\n  out.rpc_name !== 'gtm_claim_contact_email_enrichment_v1'\n) {\n  throw new Error(\n    'GTM06 FINAL claim did not return through Supabase Broker V3'\n  );\n}\n\nconst rows = Array.isArray(out.response) ? out.response : [];\n\nif (rows.length !== 1) {\n  throw new Error(\n    `GTM06 FINAL expected exactly one claimed enrichment task, got ${rows.length}`\n  );\n}\n\nconst claim = rows[0];\n\nconst required = [\n  'task_key',\n  'run_id',\n  'contact_id',\n  'candidate_priority_rank',\n  'full_name',\n  'provider_contact_id',\n  'attempt_count',\n  'estimated_credit_cost'\n];\n\nfor (const key of required) {\n  if (\n    claim[key] === undefined ||\n    claim[key] === null ||\n    claim[key] === ''\n  ) {\n    throw new Error(\n      `GTM06 FINAL claimed task missing ${key}`\n    );\n  }\n}\n\nif (\n  Number(claim.candidate_priority_rank) !==\n  cfg.candidate_priority_rank\n) {\n  throw new Error(\n    `GTM06 FINAL claimed rank ${claim.candidate_priority_rank}; expected ${cfg.candidate_priority_rank}`\n  );\n}\n\nif (Number(claim.attempt_count) < 1) {\n  throw new Error(\n    `GTM06 FINAL invalid attempt_count after claim: ${claim.attempt_count}`\n  );\n}\n\nif (Number(claim.estimated_credit_cost) !== 1) {\n  throw new Error(\n    `GTM06 FINAL expected one-credit estimate, got ${claim.estimated_credit_cost}`\n  );\n}\n\nreturn [{\n  json: {\n    ...claim,\n\n    execution_mode: cfg.execution_mode,\n\n    prospeo_request_body: {\n      only_verified_email: true,\n      enrich_mobile: false,\n      data: {\n        person_id: claim.provider_contact_id\n      }\n    },\n\n    provider_call_allowed: true,\n    max_credit_exposure_for_this_execution: 1,\n    mobile_enrichment_allowed: false\n  }\n}];"
+      },
+      "id": "604be0b5-094b-4055-b18d-61ce9d985470",
+      "name": "Build Verified Email Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "id": "f1bda8c0-c8b8-49fc-ac3e-05fa503e7389",
+      "name": "Wait 2s - Prospeo Rate Guard",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        520,
+        220
+      ],
+      "webhookId": "12bf75f3-5b5d-4d12-8ba6-bb460733334f"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.prospeo.io/enrich-person",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.prospeo_request_body) }}",
+        "options": {}
+      },
+      "id": "0ffe49e2-13b3-41dc-aa95-a52734433ba9",
+      "name": "Prospeo - Enrich Verified Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        760,
+        220
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PROSPEO_CREDENTIAL_ID",
+          "name": "Prospeo Header Auth"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const claim =\n  $('Build Verified Email Request').first().json;\n\nconst response = $input.first().json || {};\n\nconst safeStringify = value => {\n  try {\n    return JSON.stringify(value);\n  } catch (_) {\n    return String(value);\n  }\n};\n\nlet providerPayload = null;\n\nif (\n  response?.error === false &&\n  response?.person\n) {\n  providerPayload = response;\n} else {\n  const candidates = [\n    response?.error?.message,\n    response?.message,\n    response?.body\n  ].filter(v =>\n    typeof v === 'string' &&\n    v.trim()\n  );\n\n  for (const text of candidates) {\n    const first = text.indexOf('{');\n    const last = text.lastIndexOf('}');\n\n    if (first >= 0 && last > first) {\n      const inner =\n        text.slice(first, last + 1).replace(/\\\\\"/g, '\"');\n\n      try {\n        const parsed = JSON.parse(inner);\n\n        if (\n          parsed &&\n          typeof parsed === 'object'\n        ) {\n          providerPayload = parsed;\n          break;\n        }\n      } catch (_) {}\n    }\n  }\n}\n\nconst statusCandidate = [\n  response?.error?.status,\n  response?.statusCode,\n  response?.status\n].find(v =>\n  Number.isInteger(Number(v))\n);\n\nlet httpStatus =\n  providerPayload?.error === false\n    ? 200\n    : statusCandidate !== undefined\n      ? Number(statusCandidate)\n      : null;\n\nlet outcome;\nlet returnedProviderContactId = null;\nlet email = null;\nlet emailStatus = null;\nlet freeEnrichment = null;\nlet errorCode = null;\nlet errorMessage = null;\nlet nextRetryAt = null;\n\nif (\n  providerPayload?.error === false &&\n  providerPayload?.person\n) {\n  const person = providerPayload.person;\n  const emailObj = person.email || {};\n\n  returnedProviderContactId =\n    person.person_id || null;\n\n  email =\n    emailObj.email || null;\n\n  emailStatus =\n    emailObj.status || null;\n\n  freeEnrichment =\n    Boolean(providerPayload.free_enrichment);\n\n  const identityMatches =\n    returnedProviderContactId ===\n    claim.provider_contact_id;\n\n  const verifiedEmail =\n    emailStatus === 'VERIFIED' &&\n    emailObj.revealed === true &&\n    typeof email === 'string' &&\n    email.includes('@');\n\n  const mobileWasUnexpectedlyRevealed =\n    providerPayload?.person?.mobile?.revealed === true;\n\n  if (\n    identityMatches &&\n    verifiedEmail &&\n    !mobileWasUnexpectedlyRevealed\n  ) {\n    outcome = 'succeeded';\n  } else {\n    outcome = 'permanent_failed';\n\n    if (!identityMatches) {\n      errorCode =\n        'PROVIDER_IDENTITY_MISMATCH';\n\n      errorMessage =\n        `Prospeo returned person_id ${returnedProviderContactId}; expected ${claim.provider_contact_id}`;\n    } else if (mobileWasUnexpectedlyRevealed) {\n      errorCode =\n        'UNEXPECTED_MOBILE_REVEAL';\n\n      errorMessage =\n        'Prospeo unexpectedly revealed mobile data even though enrich_mobile=false.';\n    } else {\n      errorCode =\n        'UNEXPECTED_ENRICHMENT_PAYLOAD';\n\n      errorMessage =\n        'Prospeo success response did not contain a revealed VERIFIED email.';\n    }\n  }\n} else {\n  const providerCode =\n    providerPayload?.error_code || null;\n\n  if (httpStatus === 429) {\n    errorCode = 'RATE_LIMITED';\n  } else {\n    errorCode = String(\n      providerCode ||\n      response?.error?.code ||\n      response?.code ||\n      'PROSPEO_UNPARSED_ERROR'\n    );\n  }\n\n  errorMessage = String(\n    providerPayload?.message ||\n    response?.error?.message ||\n    response?.message ||\n    (\n      httpStatus === 429\n        ? 'Prospeo enrichment rate limit exceeded.'\n        : 'Prospeo enrichment returned an unparsed error'\n    )\n  ).slice(0, 2000);\n\n  if (providerCode === 'NO_MATCH') {\n    outcome = 'no_match';\n\n    if (httpStatus === null) {\n      httpStatus = 400;\n    }\n  } else if (\n    httpStatus === 429 ||\n    (\n      httpStatus !== null &&\n      httpStatus >= 500\n    ) ||\n    providerCode === 'INTERNAL_ERROR'\n  ) {\n    outcome = 'retryable_failed';\n\n    nextRetryAt =\n      new Date(\n        Date.now() + 60 * 60 * 1000\n      ).toISOString();\n  } else {\n    outcome = 'permanent_failed';\n  }\n}\n\nreturn [{\n  json: {\n    task_key: claim.task_key,\n    run_id: claim.run_id,\n    contact_id: claim.contact_id,\n    candidate_priority_rank:\n      Number(claim.candidate_priority_rank),\n\n    full_name: claim.full_name,\n    job_title: claim.job_title,\n    persona: claim.persona,\n\n    claimed_provider_contact_id:\n      claim.provider_contact_id,\n\n    attempt_count_after_claim:\n      Number(claim.attempt_count),\n\n    outcome,\n\n    returned_provider_contact_id:\n      returnedProviderContactId,\n\n    verified_email: email,\n    email_status: emailStatus,\n    free_enrichment: freeEnrichment,\n\n    http_status: httpStatus,\n    error_code: errorCode,\n    error_message: errorMessage,\n    next_retry_at: nextRetryAt,\n\n    provider_call_performed: true,\n\n    response_metadata: {\n      stage: 'GTM06_FINAL',\n      endpoint: '/enrich-person',\n\n      serialized_single_contact_execution: true,\n      rate_guard_seconds: 2,\n\n      only_verified_email: true,\n      enrich_mobile: false,\n\n      claimed_provider_contact_id:\n        claim.provider_contact_id,\n\n      returned_provider_contact_id:\n        returnedProviderContactId,\n\n      free_enrichment: freeEnrichment,\n      email_status: emailStatus,\n\n      email_revealed:\n        providerPayload?.person?.email?.revealed === true,\n\n      mobile_revealed:\n        providerPayload?.person?.mobile?.revealed === true,\n\n      provider_error_code:\n        providerPayload?.error_code || null,\n\n      raw_error_preview:\n        safeStringify(\n          response?.error || null\n        ).slice(0, 1000)\n    }\n  }\n}];"
+      },
+      "id": "aa1fc3fa-7dfc-4a9e-8601-5bed6647826c",
+      "name": "Normalize Enrichment - Preserve Attempt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_finalize_contact_email_enrichment_v1",
+            "rpc_body": "={{ { p_task_key: $json.task_key, p_outcome: $json.outcome, p_returned_provider_contact_id: $json.returned_provider_contact_id, p_email: $json.verified_email, p_email_status: $json.email_status, p_free_enrichment: $json.free_enrichment, p_http_status: $json.http_status, p_error_code: $json.error_code, p_error_message: $json.error_message, p_response_metadata: $json.response_metadata, p_next_retry_at: $json.next_retry_at } }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "c26bf454-6fed-47de-b877-7ae609c2088b",
+      "name": "Supabase V3 - Finalize Enrichment Atomically",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1280,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_contact_email_enrichment_plan_v1",
+            "rpc_body": "={{ { p_provider_name: 'prospeo', p_provider_contract_version: 'CE-V1.0.0' } }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "9d1e88b7-62c6-437d-b068-912cf333209b",
+      "name": "Supabase V3 - Remaining Enrichment Plan",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1540,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const normalized =\n  $('Normalize Enrichment - Preserve Attempt').first().json;\n\nconst finalOut =\n  $('Supabase V3 - Finalize Enrichment Atomically').first().json || {};\n\nconst remainingOut =\n  $input.first().json || {};\n\nif (\n  finalOut.broker !== 'supabase' ||\n  finalOut.broker_version !== 'SB-BROKER-V3.0.0' ||\n  finalOut.rpc_name !== 'gtm_finalize_contact_email_enrichment_v1'\n) {\n  throw new Error(\n    'GTM06 FINAL atomic finalize did not return through Supabase Broker V3'\n  );\n}\n\nconst finals =\n  Array.isArray(finalOut.response)\n    ? finalOut.response\n    : [];\n\nif (finals.length !== 1) {\n  throw new Error(\n    `GTM06 FINAL expected one finalized task row, got ${finals.length}`\n  );\n}\n\nconst final = finals[0];\n\nif (\n  remainingOut.broker !== 'supabase' ||\n  remainingOut.broker_version !== 'SB-BROKER-V3.0.0' ||\n  remainingOut.rpc_name !== 'gtm_contact_email_enrichment_plan_v1'\n) {\n  throw new Error(\n    'GTM06 FINAL remaining plan did not return through Supabase Broker V3'\n  );\n}\n\nconst remaining =\n  Array.isArray(remainingOut.response)\n    ? remainingOut.response\n    : [];\n\nconst terminal = new Set([\n  'succeeded',\n  'no_match',\n  'permanent_failed',\n  'retryable_failed'\n]);\n\nconst taskStatus =\n  final.task_status ||\n  final.status ||\n  normalized.outcome;\n\nif (!terminal.has(taskStatus)) {\n  throw new Error(\n    `GTM06 FINAL unexpected finalized status: ${taskStatus}`\n  );\n}\n\nreturn [{\n  json: {\n    gtm06_controlled_enrichment_completed: true,\n\n    provider: 'prospeo',\n    enrichment_contract_version: 'CE-V1.0.0',\n\n    full_name: normalized.full_name,\n    job_title: normalized.job_title,\n    persona: normalized.persona,\n\n    provider_outcome: normalized.outcome,\n    provider_http_status: normalized.http_status,\n    provider_error_code: normalized.error_code,\n\n    task_status: taskStatus,\n\n    attempt_count:\n      final.attempt_count ??\n      normalized.attempt_count_after_claim,\n\n    actual_credit_cost:\n      final.actual_credit_cost ?? null,\n\n    run_status:\n      final.run_status ?? null,\n\n    canonical_contact_id:\n      final.contact_id ??\n      normalized.contact_id,\n\n    verified_email:\n      final.canonical_email ??\n      normalized.verified_email ??\n      null,\n\n    canonical_email_status:\n      final.canonical_email_status ?? null,\n\n    email_alias_present:\n      Boolean(final.email_alias_present),\n\n    free_enrichment:\n      normalized.free_enrichment,\n\n    mobile_enrichment_requested: false,\n\n    provider_call_performed: true,\n\n    remaining_candidate_count:\n      remaining.length,\n\n    remaining_candidate_summary:\n      remaining\n        .sort(\n          (a,b) =>\n            Number(a.candidate_priority_rank) -\n            Number(b.candidate_priority_rank)\n        )\n        .map(\n          x =>\n            `${x.candidate_priority_rank}:${x.full_name} [${x.persona}]`\n        )\n        .join(' | '),\n\n    next_retry_at:\n      normalized.next_retry_at,\n\n    error:\n      normalized.error_message,\n\n    next_action:\n      taskStatus === 'retryable_failed'\n        ? 'Do not reset the attempt. Wait until next_retry_at, then call this workflow with execution_mode=retry and the stored task rank.'\n        : remaining.length > 0\n          ? 'Process the next enrichment task serially. Do not run parallel Prospeo enrichment calls.'\n          : 'Enrichment is complete. Re-run GTM10 Reporting & QA.'\n  }\n}];"
+      },
+      "id": "de940c38-8609-4d15-82bd-fad83ef06596",
+      "name": "GTM 06 FINAL Controlled Execution Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger - Safe Dry Run": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - Current Enrichment Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Current Enrichment Plan": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - QA Baseline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - QA Baseline": {
+      "main": [
+        [
+          {
+            "node": "GTM 06 FINAL Dry Run Report - STOP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Called - Controlled Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Validate Controlled Enrichment Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Controlled Enrichment Input": {
+      "main": [
+        [
+          {
+            "node": "Fresh Run?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fresh Run?": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - Seed Enrichment Run",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase V3 - Claim Enrichment Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Seed Enrichment Run": {
+      "main": [
+        [
+          {
+            "node": "Validate Seed Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Seed Result": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - Claim Enrichment Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Claim Enrichment Task": {
+      "main": [
+        [
+          {
+            "node": "Build Verified Email Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Verified Email Request": {
+      "main": [
+        [
+          {
+            "node": "Wait 2s - Prospeo Rate Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2s - Prospeo Rate Guard": {
+      "main": [
+        [
+          {
+            "node": "Prospeo - Enrich Verified Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prospeo - Enrich Verified Email": {
+      "main": [
+        [
+          {
+            "node": "Normalize Enrichment - Preserve Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Enrichment - Preserve Attempt": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - Finalize Enrichment Atomically",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Finalize Enrichment Atomically": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - Remaining Enrichment Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Remaining Enrichment Plan": {
+      "main": [
+        [
+          {
+            "node": "GTM 06 FINAL Controlled Execution Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "944f11f4-d1e0-429f-9757-58865fbd6ac0",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

@@ -1,0 +1,244 @@
+{
+  "name": "GTM 08 - Outreach Orchestration V1 FINAL DRY RUN - Supabase V3 [PUBLIC SANITIZED]",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e22adf25-9cd3-4d53-a77b-0138a6e1eb16",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_outreach_dispatch_plan_v1",
+            "rpc_body": "={{ { p_provider_key: 'smtp2go', p_limit: 50 } }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "22214873-4ecd-4754-b5de-79cf3781c9b6",
+      "name": "Call Supabase Broker V3 - Dispatch Plan",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $input.first().json || {};\n\nif (out.broker !== 'supabase') {\n  throw new Error(`GTM 08 expected supabase broker, got ${out.broker}`);\n}\nif (out.broker_version !== 'SB-BROKER-V3.0.0') {\n  throw new Error(`GTM 08 expected SB-BROKER-V3.0.0, got ${out.broker_version}`);\n}\nif (out.rpc_name !== 'gtm_outreach_dispatch_plan_v1') {\n  throw new Error(`GTM 08 unexpected RPC echo: ${out.rpc_name}`);\n}\n\nconst rows = Array.isArray(out.response) ? out.response : [];\n\nif (rows.length !== 7) {\n  throw new Error(`GTM 08 expected 7 dispatch rows, got ${rows.length}`);\n}\n\nconst sendReady = rows.filter(x => x.send_ready === true).length;\nconst dispatchable = rows.filter(x => x.dispatch_action === 'dispatchable').length;\nconst blockedByGate = rows.filter(x => x.dispatch_action === 'blocked_by_send_gate').length;\nconst providerLive = rows.filter(x => x.provider_live_enabled === true).length;\n\nif (sendReady !== 0) throw new Error(`GTM 08 expected 0 send-ready rows, got ${sendReady}`);\nif (dispatchable !== 0) throw new Error(`GTM 08 expected 0 dispatchable rows, got ${dispatchable}`);\nif (blockedByGate !== 7) throw new Error(`GTM 08 expected all 7 blocked_by_send_gate, got ${blockedByGate}`);\nif (providerLive !== 0) throw new Error(`GTM 08 expected SMTP2GO provider disabled for all rows`);\n\nconst first = rows[0];\n\nif (!first?.provider_envelope || typeof first.provider_envelope !== 'object') {\n  throw new Error('GTM 08 first dispatch row missing provider_envelope');\n}\nif (!first.task_key || !first.content_hash) {\n  throw new Error('GTM 08 first dispatch row missing task_key/content_hash');\n}\n\nconst env = first.provider_envelope;\nconst recipients = Array.isArray(env.to) ? env.to : [];\n\nif (recipients.length !== 1) {\n  throw new Error('GTM 08 expected exactly one recipient in dry-run envelope');\n}\nif (!env.subject || !env.text_body) {\n  throw new Error('GTM 08 dry-run envelope missing subject/body');\n}\n\nreturn [{\n  json: {\n    dispatch_plan_passed: true,\n    dispatch_rows: rows.length,\n    send_ready_rows: sendReady,\n    dispatchable_rows: dispatchable,\n    blocked_by_send_gate_rows: blockedByGate,\n    provider_live_enabled_rows: providerLive,\n    sample_full_name: first.full_name,\n    sample_task_key: first.task_key,\n    sample_content_hash: first.content_hash,\n    sample_to: recipients,\n    sample_subject: env.subject,\n    sample_text_body: env.text_body\n  }\n}];"
+      },
+      "id": "9ca54457-a78b-49c3-a197-61abb7dcc58b",
+      "name": "Validate Provider Dispatch Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -620,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SMTP2GO_BROKER_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "operation": "validate_payload",
+            "sender": "dry-run@saray.invalid",
+            "to": "={{ $json.sample_to }}",
+            "subject": "={{ $json.sample_subject }}",
+            "text_body": "={{ $json.sample_text_body }}",
+            "task_key": "={{ $json.sample_task_key }}",
+            "content_hash": "={{ $json.sample_content_hash }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "operation",
+              "displayName": "operation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "sender",
+              "displayName": "sender",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "to",
+              "displayName": "to",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "array"
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "text_body",
+              "displayName": "text_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "task_key",
+              "displayName": "task_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "content_hash",
+              "displayName": "content_hash",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "6e865861-c1f1-455c-a749-2c363fdfc751",
+      "name": "Call SMTP2GO Broker - Validate Payload",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const dispatch = $('Validate Provider Dispatch Plan').first().json;\nconst smtp = $input.first().json || {};\n\nif (smtp.broker !== 'smtp2go') {\n  throw new Error(`GTM 08 expected smtp2go broker, got ${smtp.broker}`);\n}\nif (smtp.broker_version !== 'SMTP2GO-BROKER-V1.0.0') {\n  throw new Error(`GTM 08 expected SMTP2GO-BROKER-V1.0.0, got ${smtp.broker_version}`);\n}\nif (smtp.operation !== 'validate_payload') {\n  throw new Error(`GTM 08 unexpected SMTP2GO operation: ${smtp.operation}`);\n}\nif (smtp.live_send_enabled !== false) {\n  throw new Error('GTM 08 dry-run requires live_send_enabled=false');\n}\nif (smtp.payload_valid !== true) {\n  throw new Error('GTM 08 SMTP2GO payload validation did not pass');\n}\n\nconst payload = smtp.provider_payload || {};\nconst to = Array.isArray(payload.to) ? payload.to : [];\n\nif (to.length !== 1) {\n  throw new Error('GTM 08 normalized SMTP2GO payload recipient count mismatch');\n}\nif (!payload.subject || !payload.text_body) {\n  throw new Error('GTM 08 normalized SMTP2GO payload missing subject/body');\n}\n\nreturn [{\n  json: {\n    gtm08_dry_run_completed: true,\n    supabase_broker_v3_passed: dispatch.dispatch_plan_passed === true,\n    smtp2go_broker_passed: true,\n    supabase_workflow_id: 'SUPABASE_BROKER_V3_WORKFLOW_ID',\n    smtp2go_workflow_id: 'SMTP2GO_BROKER_WORKFLOW_ID',\n    dispatch_rows: dispatch.dispatch_rows,\n    send_ready_rows: dispatch.send_ready_rows,\n    dispatchable_rows: dispatch.dispatchable_rows,\n    blocked_by_send_gate_rows: dispatch.blocked_by_send_gate_rows,\n    provider_live_enabled: smtp.live_send_enabled,\n    provider_http_call_performed: false,\n    sample_full_name: dispatch.sample_full_name,\n    sample_recipient: to[0],\n    sample_subject: payload.subject,\n    sample_task_key: dispatch.sample_task_key,\n    sample_content_hash: dispatch.sample_content_hash,\n    credentials_required_in_parent: false,\n    gtm08_dry_run_all_checks_pass:\n      dispatch.dispatch_plan_passed === true &&\n      dispatch.dispatch_rows === 7 &&\n      dispatch.send_ready_rows === 0 &&\n      dispatch.dispatchable_rows === 0 &&\n      dispatch.blocked_by_send_gate_rows === 7 &&\n      smtp.live_send_enabled === false &&\n      smtp.payload_valid === true,\n    next_stage:\n      'Install delivery/reply lifecycle foundation and reporting/QA while live sending remains disabled.'\n  }\n}];"
+      },
+      "id": "81fd88de-0c79-486a-8931-b4f36b4c351c",
+      "name": "GTM 08 Dry Run Report - STOP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -100,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Call Supabase Broker V3 - Dispatch Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Provider Dispatch Plan": {
+      "main": [
+        [
+          {
+            "node": "Call SMTP2GO Broker - Validate Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call SMTP2GO Broker - Validate Payload": {
+      "main": [
+        [
+          {
+            "node": "GTM 08 Dry Run Report - STOP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Supabase Broker V3 - Dispatch Plan": {
+      "main": [
+        [
+          {
+            "node": "Validate Provider Dispatch Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "0737ef51-1efb-4cd3-bf1f-5692f2a77380",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

@@ -1,0 +1,134 @@
+{
+  "name": "GTM UTIL - Supabase RPC Broker V3 FINAL [PUBLIC SANITIZED]",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "rpc_name"
+            },
+            {
+              "name": "rpc_body"
+            }
+          ]
+        }
+      },
+      "id": "bf3cfe28-97a3-473c-b374-d9e9c09164b7",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -760,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\n\nconst allowed = new Set([\n  // CRM\n  'gtm_contact_crm_sync_plan_v1',\n  'gtm_contact_crm_sync_tasks_v1',\n  'gtm_claim_contact_crm_sync_v1',\n  'gtm_finalize_contact_crm_sync_v1',\n  'gtm_seed_contact_crm_sync_run_v1',\n\n  // Contact acquisition V1.1\n  'gtm_contact_company_discovery_plan_v1',\n  'gtm_seed_contact_company_discovery_run_v1',\n  'gtm_claim_contact_provider_search_v1',\n  'gtm_finish_contact_provider_search_v1',\n  'gtm_ingest_contact_provider_results_v1',\n\n  // Contact readiness / enrichment\n  'gtm_contact_outbound_ready_plan_v1',\n  'gtm_contact_email_enrichment_plan_v1',\n  'gtm_seed_contact_email_enrichment_run_v1',\n  'gtm_claim_contact_email_enrichment_v1',\n  'gtm_finalize_contact_email_enrichment_v1',\n\n  // Outreach planning / execution ledger\n  'gtm_email_outreach_plan_v1',\n  'gtm_email_sequence_plan_v1',\n  'gtm_seed_email_outreach_run_v1',\n  'gtm_outreach_tasks_v1',\n  'gtm_claim_outreach_task_v1',\n  'gtm_finalize_outreach_task_v1',\n\n  // Message layer\n  'gtm_render_outreach_message_v1',\n  'gtm_set_outreach_message_approval_v1',\n\n  // Provider boundary\n  'gtm_outreach_dispatch_plan_v1',\n  'gtm_set_outreach_provider_live_v1',\n\n  // Delivery / reply lifecycle\n  'gtm_ingest_outreach_provider_event_v1',\n  'gtm_record_outreach_reply_v1',\n\n  // Reporting / QA\n  'gtm_project01_funnel_report_v1',\n  'gtm_project01_contact_state_report_v1',\n  'gtm_project01_qa_report_v1'\n]);\n\nconst rpc = String(input.rpc_name || '').trim();\n\nif (!allowed.has(rpc)) {\n  throw new Error(`Supabase broker V3 rejected RPC: ${rpc}`);\n}\n\nconst body = input.rpc_body ?? {};\n\nif (typeof body !== 'object' || Array.isArray(body)) {\n  throw new Error('Supabase broker V3 rpc_body must be a JSON object');\n}\n\nreturn [{\n  json: {\n    broker_version: 'SB-BROKER-V3.0.0',\n    rpc_name: rpc,\n    url: `https://YOUR_PROJECT.supabase.co/rest/v1/rpc/${rpc}`,\n    body\n  }\n}];"
+      },
+      "id": "e8ccd9ed-40e0-47a2-8636-d0052fd8390e",
+      "name": "Validate and Route Supabase RPC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "id": "cbc3f4d6-4550-4b23-9d89-e194744d8279",
+      "name": "Supabase RPC - Credential Lives Here",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -280,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Validate and Route Supabase RPC').first().json;\n\nconst items = $input.all();\nconst raw = items.map(item => item.json);\n\n// With \"Always Output Data\" enabled on the HTTP node, an RPC that\n// legitimately returns [] is represented by one synthetic empty item.\n// Convert that back into the provider-neutral response: [] contract.\nconst syntheticEmpty =\n  raw.length === 1 &&\n  raw[0] &&\n  typeof raw[0] === 'object' &&\n  !Array.isArray(raw[0]) &&\n  Object.keys(raw[0]).length === 0;\n\nconst response = syntheticEmpty\n  ? []\n  : raw.flatMap(value =>\n      Array.isArray(value) ? value : [value]\n    );\n\nreturn [{\n  json: {\n    broker: 'supabase',\n    broker_version: req.broker_version,\n    rpc_name: req.rpc_name,\n    response\n  }\n}];"
+      },
+      "id": "040465b1-cd05-4747-b3ba-9805f345a47d",
+      "name": "Return Supabase Broker Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Validate and Route Supabase RPC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Route Supabase RPC": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC - Credential Lives Here",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase RPC - Credential Lives Here": {
+      "main": [
+        [
+          {
+            "node": "Return Supabase Broker Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "21cf3b37-d29e-4f2d-a52f-214d940fb710",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

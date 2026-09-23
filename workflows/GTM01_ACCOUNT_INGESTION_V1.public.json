@@ -1,0 +1,140 @@
+{
+  "name": "GTM 01 - Account Ingestion V1 [PUBLIC SANITIZED]",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "1025f161-1164-4ba9-943c-ff51eeda0441",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node: Generate Test Accounts\n// Mode: Run Once for All Items\n//\n// Produces two safe test records for validating idempotent ingestion.\n\nreturn [\n  {\n    json: {\n      company_name: \"GTM Ingestion Test Cleaning One\",\n      website_url: \"https://www.example.com/services\",\n      city: \"Dallas\",\n      state: \"Texas\",\n      country: \"United States\",\n      industry: \"Janitorial Services\",\n      discovery_source: \"manual_n8n_test\",\n      discovery_source_id: \"test-001\",\n      source_query: \"day2 ingestion smoke test\",\n      is_test_record: true\n    }\n  },\n  {\n    json: {\n      company_name: \"GTM Ingestion Test Cleaning Two\",\n      city: \"Charlotte\",\n      state: \"North Carolina\",\n      country: \"United States\",\n      industry: \"Janitorial Services\",\n      discovery_source: \"manual_n8n_test\",\n      discovery_source_id: \"test-002\",\n      source_query: \"day2 ingestion smoke test\",\n      is_test_record: true\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "9fa6aea8-6601-497e-94b1-4bb4df249d18",
+      "name": "Generate Test Accounts"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node: Normalize Account V1\n// Mode: Run Once for All Items\n\nfunction clean(value) {\n  if (value === undefined || value === null) return null;\n\n  const s = String(value).trim();\n\n  return s === '' ? null : s;\n}\n\nfunction normalizeCompanyName(value) {\n  const s = clean(value);\n\n  if (!s) return null;\n\n  return s\n    .toLowerCase()\n    .replace(/&/g, ' and ')\n    .replace(/[^a-z0-9]+/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction normalizeDomain(value) {\n  let s = clean(value);\n\n  if (!s) return null;\n\n  s = s.trim().toLowerCase();\n\n  // Remove protocol\n  s = s.replace(/^[a-z][a-z0-9+.-]*:\\/\\//i, '');\n  s = s.replace(/^\\/\\//, '');\n\n  // Keep hostname only\n  s = s.split(/[/?#]/)[0];\n\n  // Remove credentials if present\n  if (s.includes('@')) {\n    s = s.split('@').pop();\n  }\n\n  // Remove port\n  s = s.replace(/:\\d+$/, '');\n\n  // Normalize hostname\n  s = s.replace(/^www\\./, '');\n  s = s.replace(/\\.$/, '');\n\n  if (!s || !s.includes('.') || /\\s/.test(s)) {\n    return null;\n  }\n\n  return s;\n}\n\nfunction slug(value, fallback) {\n  const s = clean(value);\n\n  if (!s) return fallback;\n\n  const result = s\n    .toLowerCase()\n    .replace(/&/g, ' and ')\n    .replace(/[^a-z0-9]+/g, '-')\n    .replace(/^-+|-+$/g, '');\n\n  return result || fallback;\n}\n\nreturn items.map((item) => {\n  const r = item.json || {};\n\n  const companyName =\n    clean(r.company_name) ??\n    clean(r.title) ??\n    clean(r.name);\n\n  if (!companyName) {\n    throw new Error('company_name is required for ingestion');\n  }\n\n  const websiteUrl =\n    clean(r.website_url) ??\n    clean(r.website) ??\n    clean(r.url);\n\n  const suppliedDomain = clean(r.domain);\n\n  const normalizedDomain =\n    normalizeDomain(suppliedDomain) ??\n    normalizeDomain(websiteUrl);\n\n  const discoverySource =\n    clean(r.discovery_source) ??\n    'manual';\n\n  const discoverySourceId =\n    clean(r.discovery_source_id) ??\n    clean(r.place_id) ??\n    clean(r.source_id);\n\n  const city = clean(r.city);\n  const state = clean(r.state);\n\n  let accountKey;\n\n  if (normalizedDomain) {\n    accountKey = `domain:${normalizedDomain}`;\n  } else if (discoverySourceId) {\n    accountKey =\n      `source:${slug(discoverySource, 'unknown-source')}:${slug(\n        discoverySourceId,\n        'unknown-id'\n      )}`;\n  } else {\n    accountKey =\n      `fallback:${slug(companyName, 'unknown-company')}:${slug(\n        city,\n        'unknown-city'\n      )}:${slug(state, 'unknown-state')}`;\n  }\n\n  const employeeCount =\n    r.employee_count_estimate !== undefined &&\n    r.employee_count_estimate !== null &&\n    r.employee_count_estimate !== '' &&\n    Number.isFinite(Number(r.employee_count_estimate))\n      ? Number(r.employee_count_estimate)\n      : null;\n\n  const foundedYear =\n    r.founded_year !== undefined &&\n    r.founded_year !== null &&\n    r.founded_year !== '' &&\n    Number.isFinite(Number(r.founded_year))\n      ? Number(r.founded_year)\n      : null;\n\n  return {\n    json: {\n      account_key: accountKey,\n\n      company_name: companyName,\n      normalized_company_name: normalizeCompanyName(companyName),\n\n      domain: normalizedDomain,\n      normalized_domain: normalizedDomain,\n      website_url: websiteUrl,\n\n      linkedin_url: clean(r.linkedin_url),\n      google_maps_url: clean(r.google_maps_url),\n\n      country: clean(r.country) ?? 'United States',\n      state,\n      city,\n      street_address: clean(r.street_address ?? r.address),\n      postal_code: clean(r.postal_code),\n\n      discovery_source: discoverySource,\n      discovery_source_id: discoverySourceId,\n      source_query: clean(r.source_query),\n\n      industry: clean(r.industry),\n      employee_band: clean(r.employee_band),\n      employee_count_estimate: employeeCount,\n      founded_year: foundedYear,\n      company_type: clean(r.company_type),\n\n      qualification_status: 'normalized',\n\n      // Preserve original provider record for audit/debugging\n      source_payload: r,\n\n      is_test_record: Boolean(r.is_test_record),\n    },\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "a367a965-c6d2-44c4-bba1-e6cc848ce03e",
+      "name": "Normalize Account V1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_PROJECT.supabase.co/rest/v1/accounts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "on_conflict",
+              "value": "account_key"
+            },
+            {
+              "name": "select",
+              "value": "id,account_key,company_name,normalized_domain,qualification_status,is_test_record,created_at,updated_at"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        624,
+        0
+      ],
+      "id": "6738068a-15b4-4f76-9341-23dfd2260375",
+      "name": "Supabase Upsert Account",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase Service Role"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Generate Test Accounts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Test Accounts": {
+      "main": [
+        [
+          {
+            "node": "Normalize Account V1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Account V1": {
+      "main": [
+        [
+          {
+            "node": "Supabase Upsert Account",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "0ad037fd-f60b-4302-8aa0-9b5111395da9",
+  "meta": {},
+  "nodeGroups": [],
+  "tags": []
+}

@@ -1,0 +1,380 @@
+{
+  "name": "GTM 09 - Lifecycle & Reply Handling V1 [PUBLIC SANITIZED]",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "1259b0f9-bedb-4adc-a4cb-072618bdca79",
+      "name": "Manual Trigger - Contract Dry Run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1180,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_project01_qa_report_v1",
+            "rpc_body": "={{ {} }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "d2bf8d77-bc3e-4136-87f9-280ec4c9ba7e",
+      "name": "Call Supabase V3 - QA Preflight",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -920,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $input.first().json || {};\n\nif (out.broker !== 'supabase') {\n  throw new Error(`GTM 09 expected supabase broker, got ${out.broker}`);\n}\nif (out.broker_version !== 'SB-BROKER-V3.0.0') {\n  throw new Error(`GTM 09 expected SB-BROKER-V3.0.0, got ${out.broker_version}`);\n}\nif (out.rpc_name !== 'gtm_project01_qa_report_v1') {\n  throw new Error(`GTM 09 QA preflight RPC mismatch: ${out.rpc_name}`);\n}\n\nconst report = Array.isArray(out.response) && out.response.length\n  ? out.response[0]\n  : null;\n\nif (!report || typeof report !== 'object') {\n  throw new Error('GTM 09 QA preflight missing report');\n}\n\nif (report.all_checks_pass !== true) {\n  throw new Error('GTM 09 QA preflight reports project invariants are not green');\n}\n\nif (report.state !== 'PRE_SEND_CONTROLLED') {\n  throw new Error(`GTM 09 expected PRE_SEND_CONTROLLED, got ${report.state}`);\n}\n\nreturn [{\n  json: {\n    gtm09_contract_dry_run_completed: true,\n    supabase_broker_v3_passed: true,\n    broker_workflow_id: 'SUPABASE_BROKER_V3_WORKFLOW_ID',\n    production_entrypoint_configured: true,\n    supported_event_families: ['provider_event', 'reply_event'],\n    provider_event_rpc: 'gtm_ingest_outreach_provider_event_v1',\n    reply_event_rpc: 'gtm_record_outreach_reply_v1',\n    database_mutation_performed: false,\n    provider_http_call_performed: false,\n    credentials_required_in_parent: false,\n    qa_state: report.state,\n    qa_all_checks_pass: report.all_checks_pass,\n    gtm09_dry_run_all_checks_pass: true\n  }\n}];"
+      },
+      "id": "b81b154b-e09a-4ab8-8b6f-8ada5fa56661",
+      "name": "GTM 09 Contract Dry Run Report - STOP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -650,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "event_family"
+            },
+            {
+              "name": "provider_key"
+            },
+            {
+              "name": "provider_event_key"
+            },
+            {
+              "name": "provider_message_id"
+            },
+            {
+              "name": "task_key"
+            },
+            {
+              "name": "event_type"
+            },
+            {
+              "name": "reply_event_key"
+            },
+            {
+              "name": "reply_type"
+            },
+            {
+              "name": "reply_text"
+            },
+            {
+              "name": "occurred_at"
+            },
+            {
+              "name": "payload"
+            },
+            {
+              "name": "metadata"
+            }
+          ]
+        }
+      },
+      "id": "63f3ad6e-65d6-4032-a8d0-8fea073d8aa5",
+      "name": "When Called - Lifecycle Event",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1180,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst family = String(input.event_family || '').trim().toLowerCase();\n\nif (!['provider_event', 'reply_event'].includes(family)) {\n  throw new Error(`GTM 09 unsupported event_family: ${family}`);\n}\n\nconst taskKey = String(input.task_key || '').trim();\nif (!taskKey) {\n  throw new Error('GTM 09 task_key is required');\n}\n\nif (family === 'provider_event') {\n  const providerKey = String(input.provider_key || '').trim();\n  const providerEventKey = String(input.provider_event_key || '').trim();\n  const eventType = String(input.event_type || '').trim().toLowerCase();\n\n  if (!providerKey) throw new Error('GTM 09 provider_key is required');\n  if (!providerEventKey) throw new Error('GTM 09 provider_event_key is required');\n  if (!eventType) throw new Error('GTM 09 event_type is required');\n\n  const payload = input.payload ?? {};\n  if (typeof payload !== 'object' || Array.isArray(payload)) {\n    throw new Error('GTM 09 payload must be a JSON object');\n  }\n\n  return [{\n    json: {\n      route: 'provider_event',\n      rpc_name: 'gtm_ingest_outreach_provider_event_v1',\n      rpc_body: {\n        p_provider_key: providerKey,\n        p_provider_event_key: providerEventKey,\n        p_provider_message_id: input.provider_message_id || null,\n        p_task_key: taskKey,\n        p_event_type: eventType,\n        p_event_occurred_at: input.occurred_at || null,\n        p_payload: payload\n      }\n    }\n  }];\n}\n\nconst replyEventKey = String(input.reply_event_key || '').trim();\nconst replyType = String(input.reply_type || '').trim().toLowerCase();\n\nif (!replyEventKey) throw new Error('GTM 09 reply_event_key is required');\nif (!replyType) throw new Error('GTM 09 reply_type is required');\n\nconst metadata = input.metadata ?? {};\nif (typeof metadata !== 'object' || Array.isArray(metadata)) {\n  throw new Error('GTM 09 metadata must be a JSON object');\n}\n\nreturn [{\n  json: {\n    route: 'reply_event',\n    rpc_name: 'gtm_record_outreach_reply_v1',\n    rpc_body: {\n      p_reply_event_key: replyEventKey,\n      p_task_key: taskKey,\n      p_reply_type: replyType,\n      p_reply_text: input.reply_text || null,\n      p_occurred_at: input.occurred_at || null,\n      p_metadata: metadata\n    }\n  }\n}];"
+      },
+      "id": "a46b23a9-231c-437d-b327-442f934818cc",
+      "name": "Validate and Route Lifecycle Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -920,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bcdecd9b-25b6-419b-acf8-c8b368032b48",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "provider_event",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "73a6ca27-f867-4a2f-8c39-c2f5095506e3",
+      "name": "Provider Event?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -680,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "={{ $json.rpc_name }}",
+            "rpc_body": "={{ $json.rpc_body }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "824bfd43-2bc2-459c-802a-49d4c74ad68d",
+      "name": "Supabase V3 - Ingest Provider Event",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -420,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "={{ $json.rpc_name }}",
+            "rpc_body": "={{ $json.rpc_body }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "d76cb90d-bb19-43bd-af96-6b379accc818",
+      "name": "Supabase V3 - Record Reply Event",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -420,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $input.first().json || {};\n\nif (out.broker !== 'supabase') {\n  throw new Error(`GTM 09 expected supabase broker result`);\n}\nif (out.broker_version !== 'SB-BROKER-V3.0.0') {\n  throw new Error(`GTM 09 unexpected broker version: ${out.broker_version}`);\n}\n\nconst rows = Array.isArray(out.response) ? out.response : [];\nif (rows.length !== 1) {\n  throw new Error(`GTM 09 expected exactly one lifecycle result row, got ${rows.length}`);\n}\n\nreturn [{\n  json: {\n    gtm09_event_processed: true,\n    rpc_name: out.rpc_name,\n    broker_version: out.broker_version,\n    result: rows[0],\n    credentials_required_in_parent: false\n  }\n}];"
+      },
+      "id": "f74fe21f-0da2-4952-9995-f7b169853454",
+      "name": "Normalize Lifecycle Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -120,
+        180
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger - Contract Dry Run": {
+      "main": [
+        [
+          {
+            "node": "Call Supabase V3 - QA Preflight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Supabase V3 - QA Preflight": {
+      "main": [
+        [
+          {
+            "node": "GTM 09 Contract Dry Run Report - STOP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Called - Lifecycle Event": {
+      "main": [
+        [
+          {
+            "node": "Validate and Route Lifecycle Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Route Lifecycle Event": {
+      "main": [
+        [
+          {
+            "node": "Provider Event?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Provider Event?": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - Ingest Provider Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase V3 - Record Reply Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Ingest Provider Event": {
+      "main": [
+        [
+          {
+            "node": "Normalize Lifecycle Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Record Reply Event": {
+      "main": [
+        [
+          {
+            "node": "Normalize Lifecycle Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a4deff4b-d70f-480a-97eb-331e302f5248",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

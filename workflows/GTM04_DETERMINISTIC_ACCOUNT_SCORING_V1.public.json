@@ -1,0 +1,158 @@
+{
+  "name": "GTM 04 - Deterministic Account Scoring V1 [PUBLIC SANITIZED]",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "404e3edf-01ee-4cca-9924-9397c041eff2",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "https://YOUR_PROJECT.supabase.co/rest/v1/account_evidence",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "select",
+              "value": "id,account_id,evidence_key,evidence_value,evidence_json,source_url,confidence,research_version"
+            },
+            {
+              "name": "research_version",
+              "value": "eq.WI-V1B.0.0-GEMINI"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "130ded1b-a73e-4ff4-94c6-d32d537a67e3",
+      "name": "Fetch Website Evidence V1",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase Service Role"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Deterministic Scores V1\n// n8n Code node\n// Mode: Run Once for All Items\n//\n// Input:\n//   account_evidence rows for research_version WI-V1B.0.0-GEMINI\n//\n// Output:\n//   one aggregate item containing:\n//   - per-account score summaries\n//   - idempotent score_components rows\n//\n// Philosophy:\n//   AI extracts evidence.\n//   Deterministic code applies GTM policy.\n//\n// Higher Fit = structurally closer to initial commercial-cleaning ICP.\n// Higher Need = stronger opportunity for CRM / lead-to-contract infrastructure.\n// Signal = intentionally unmeasured in V1.\n// Higher Confidence = stronger / more complete evidence base.\n\nconst RULE_VERSION = \"SC-V1.0.0\";\nconst RESEARCH_VERSION = \"WI-V1B.0.0-GEMINI\";\n\nconst EXPECTED_KEYS = [\n  \"commercial_focus\",\n  \"recurring_janitorial\",\n  \"office_cleaning\",\n  \"facility_types\",\n  \"quote_estimate_motion\",\n  \"walkthrough_signal\",\n  \"residential_focus\",\n  \"service_area_scope\",\n  \"enterprise_scale_signal\",\n  \"franchise_signal\",\n  \"technology_maturity\",\n  \"lead_capture_maturity\"\n];\n\nfunction round2(n) {\n  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;\n}\n\nfunction clamp(n, min, max) {\n  return Math.min(max, Math.max(min, n));\n}\n\nfunction flattenInput(n8nItems) {\n  const out = [];\n\n  for (const item of n8nItems) {\n    const value = item.json;\n\n    if (Array.isArray(value)) {\n      out.push(...value);\n      continue;\n    }\n\n    if (Array.isArray(value?.data)) {\n      out.push(...value.data);\n      continue;\n    }\n\n    out.push(value);\n  }\n\n  return out;\n}\n\nfunction normalizeEvidenceJson(value) {\n  if (!value) return {};\n\n  if (typeof value === \"object\") {\n    return value;\n  }\n\n  if (typeof value === \"string\") {\n    try {\n      return JSON.parse(value);\n    } catch {\n      return {};\n    }\n  }\n\n  return {};\n}\n\nfunction scoreLookup(value, mapping, fallback = 0) {\n  if (Object.prototype.hasOwnProperty.call(mapping, value)) {\n    return mapping[value];\n  }\n\n  return fallback;\n}\n\nfunction scalar(points, maxPoints) {\n  if (!maxPoints) return null;\n  return round2(points / maxPoints);\n}\n\nconst rawRows = flattenInput(items)\n  .filter(row =>\n    row &&\n    row.account_id &&\n    row.evidence_key &&\n    row.research_version === RESEARCH_VERSION\n  );\n\nif (!rawRows.length) {\n  throw new Error(\n    `No account_evidence rows found for ${RESEARCH_VERSION}.`\n  );\n}\n\n// --------------------------------------------------\n// Group evidence by account.\n// --------------------------------------------------\n\nconst groups = new Map();\n\nfor (const row of rawRows) {\n  if (!groups.has(row.account_id)) {\n    groups.set(row.account_id, new Map());\n  }\n\n  const accountEvidence = groups.get(row.account_id);\n\n  if (accountEvidence.has(row.evidence_key)) {\n    throw new Error(\n      `Duplicate evidence key '${row.evidence_key}' for account ${row.account_id}.`\n    );\n  }\n\n  accountEvidence.set(row.evidence_key, {\n    ...row,\n    evidence_json: normalizeEvidenceJson(row.evidence_json)\n  });\n}\n\nconst scoreComponents = [];\nconst summaries = [];\n\n// --------------------------------------------------\n// Component helpers.\n// --------------------------------------------------\n\nfunction pushEvidenceComponent({\n  accountId,\n  dimension,\n  key,\n  label,\n  evidence,\n  maxPoints,\n  points,\n  mappingDescription\n}) {\n  if (!evidence) {\n    throw new Error(\n      `Missing evidence for scoring component '${key}' / account ${accountId}.`\n    );\n  }\n\n  const boundedPoints = round2(\n    clamp(points, 0, maxPoints)\n  );\n\n  scoreComponents.push({\n    account_id: accountId,\n    score_dimension: dimension,\n    component_key: key,\n    component_label: label,\n    component_value: scalar(boundedPoints, maxPoints),\n    max_points: maxPoints,\n    points_awarded: boundedPoints,\n    evidence_id: evidence.id || null,\n    rule_version: RULE_VERSION,\n    reasoning:\n      `${evidence.evidence_key}=${evidence.evidence_value}; ` +\n      `evidence_confidence=${Number(evidence.confidence ?? 0)}; ` +\n      `${mappingDescription}; ` +\n      `awarded=${boundedPoints}/${maxPoints}.`\n  });\n\n  return boundedPoints;\n}\n\nfunction pushAggregateComponent({\n  accountId,\n  dimension,\n  key,\n  label,\n  componentValue,\n  maxPoints,\n  points,\n  reasoning\n}) {\n  const boundedPoints = maxPoints > 0\n    ? round2(clamp(points, 0, maxPoints))\n    : 0;\n\n  scoreComponents.push({\n    account_id: accountId,\n    score_dimension: dimension,\n    component_key: key,\n    component_label: label,\n    component_value:\n      componentValue === null || componentValue === undefined\n        ? null\n        : round2(componentValue),\n    max_points: maxPoints,\n    points_awarded: boundedPoints,\n    evidence_id: null,\n    rule_version: RULE_VERSION,\n    reasoning\n  });\n\n  return boundedPoints;\n}\n\n// --------------------------------------------------\n// Score each account.\n// --------------------------------------------------\n\nfor (const [accountId, evidenceMap] of groups.entries()) {\n\n  const missing = EXPECTED_KEYS.filter(\n    key => !evidenceMap.has(key)\n  );\n\n  if (missing.length) {\n    throw new Error(\n      `Account ${accountId} is missing evidence keys: ${missing.join(\", \")}`\n    );\n  }\n\n  const e = key => evidenceMap.get(key);\n\n  // ==================================================\n  // FIT â€” 100 points total\n  // ==================================================\n\n  let fit = 0;\n\n  fit += pushEvidenceComponent({\n    accountId,\n    dimension: \"fit\",\n    key: \"fit_commercial_focus\",\n    label: \"Commercial / B2B cleaning focus\",\n    evidence: e(\"commercial_focus\"),\n    maxPoints: 25,\n    points: scoreLookup(\n      e(\"commercial_focus\").evidence_value,\n      {\n        strong: 25,\n        moderate: 18,\n        weak: 8,\n        absent: 0,\n        unknown: 0\n      }\n    ),\n    mappingDescription:\n      \"strong=25, moderate=18, weak=8, absent=0, unknown=0\"\n  });\n\n  fit += pushEvidenceComponent({\n    accountId,\n    dimension: \"fit\",\n    key: \"fit_recurring_janitorial\",\n    label: \"Recurring janitorial model\",\n    evidence: e(\"recurring_janitorial\"),\n    maxPoints: 20,\n    points: scoreLookup(\n      e(\"recurring_janitorial\").evidence_value,\n      {\n        strong: 20,\n        moderate: 14,\n        weak: 6,\n        absent: 0,\n        unknown: 0\n      }\n    ),\n    mappingDescription:\n      \"strong=20, moderate=14, weak=6, absent=0, unknown=0\"\n  });\n\n  fit += pushEvidenceComponent({\n    accountId,\n    dimension: \"fit\",\n    key: \"fit_office_cleaning\",\n    label: \"Office / workplace cleaning relevance\",\n    evidence: e(\"office_cleaning\"),\n    maxPoints: 15,\n    points: scoreLookup(\n      e(\"office_cleaning\").evidence_value,\n      {\n        strong: 15,\n        moderate: 10,\n        weak: 5,\n        absent: 0,\n        unknown: 0\n      }\n    ),\n    mappingDescription:\n      \"strong=15, moderate=10, weak=5, absent=0, unknown=0\"\n  });\n\n  fit += pushEvidenceComponent({\n    accountId,\n    dimension: \"fit\",\n    key: \"fit_facility_types\",\n    label: \"Defined commercial facility types\",\n    evidence: e(\"facility_types\"),\n    maxPoints: 10,\n    points: scoreLookup(\n      e(\"facility_types\").evidence_value,\n      {\n        strong: 10,\n        moderate: 7,\n        weak: 3,\n        absent: 0,\n        unknown: 0\n      }\n    ),\n    mappingDescription:\n      \"strong=10, moderate=7, weak=3, absent=0, unknown=0\"\n  });\n\n  fit += pushEvidenceComponent({\n    accountId,\n    dimension: \"fit\",\n    key: \"fit_service_area_scope\",\n    label: \"Service-area suitability\",\n    evidence: e(\"service_area_scope\"),\n    maxPoints: 10,\n    points: scoreLookup(\n      e(\"service_area_scope\").evidence_value,\n      {\n        local: 10,\n        regional: 10,\n        multi_region: 6,\n        national: 2,\n        unknown: 0\n      }\n    ),\n    mappingDescription:\n      \"local=10, regional=10, multi_region=6, national=2, unknown=0\"\n  });\n\n  fit += pushEvidenceComponent({\n    accountId,\n    dimension: \"fit\",\n    key: \"fit_residential_compatibility\",\n    label: \"Commercial-vs-residential compatibility\",\n    evidence: e(\"residential_focus\"),\n    maxPoints: 8,\n    points: scoreLookup(\n      e(\"residential_focus\").evidence_value,\n      {\n        absent: 8,\n        weak: 6,\n        moderate: 3,\n        strong: 0,\n        unknown: 4\n      }\n    ),\n    mappingDescription:\n      \"absent=8, weak=6, moderate=3, strong=0, unknown=4\"\n  });\n\n  fit += pushEvidenceComponent({\n    accountId,\n    dimension: \"fit\",\n    key: \"fit_enterprise_size\",\n    label: \"Initial-market size suitability\",\n    evidence: e(\"enterprise_scale_signal\"),\n    maxPoints: 7,\n    points: scoreLookup(\n      e(\"enterprise_scale_signal\").evidence_value,\n      {\n        absent: 7,\n        weak: 6,\n        moderate: 3,\n        strong: 0,\n        unknown: 4\n      }\n    ),\n    mappingDescription:\n      \"absent=7, weak=6, moderate=3, strong=0, unknown=4\"\n  });\n\n  fit += pushEvidenceComponent({\n    accountId,\n    dimension: \"fit\",\n    key: \"fit_franchise_structure\",\n    label: \"Direct-operator structure suitability\",\n    evidence: e(\"franchise_signal\"),\n    maxPoints: 5,\n    points: scoreLookup(\n      e(\"franchise_signal\").evidence_value,\n      {\n        absent: 5,\n        weak: 4,\n        moderate: 2,\n        strong: 0,\n        unknown: 3\n      }\n    ),\n    mappingDescription:\n      \"absent=5, weak=4, moderate=2, strong=0, unknown=3\"\n  });\n\n  fit = round2(fit);\n\n  // ==================================================\n  // NEED â€” 100 points total\n  // ==================================================\n\n  let need = 0;\n\n  need += pushEvidenceComponent({\n    accountId,\n    dimension: \"need\",\n    key: \"need_lead_capture_gap\",\n    label: \"Lead-capture improvement opportunity\",\n    evidence: e(\"lead_capture_maturity\"),\n    maxPoints: 30,\n    points: scoreLookup(\n      e(\"lead_capture_maturity\").evidence_value,\n      {\n        low: 30,\n        medium: 18,\n        high: 0,\n        unknown: 12\n      }\n    ),\n    mappingDescription:\n      \"low=30, medium=18, high=0, unknown=12\"\n  });\n\n  need += pushEvidenceComponent({\n    accountId,\n    dimension: \"need\",\n    key: \"need_technology_gap\",\n    label: \"Revenue-system technology opportunity\",\n    evidence: e(\"technology_maturity\"),\n    maxPoints: 25,\n    points: scoreLookup(\n      e(\"technology_maturity\").evidence_value,\n      {\n        low: 25,\n        medium: 15,\n        high: 0,\n        unknown: 10\n      }\n    ),\n    mappingDescription:\n      \"low=25, medium=15, high=0, unknown=10\"\n  });\n\n  need += pushEvidenceComponent({\n    accountId,\n    dimension: \"need\",\n    key: \"need_quote_process\",\n    label: \"Quote / estimate process opportunity\",\n    evidence: e(\"quote_estimate_motion\"),\n    maxPoints: 20,\n    points: scoreLookup(\n      e(\"quote_estimate_motion\").evidence_value,\n      {\n        strong: 20,\n        moderate: 15,\n        weak: 8,\n        absent: 2,\n        unknown: 5\n      }\n    ),\n    mappingDescription:\n      \"strong=20, moderate=15, weak=8, absent=2, unknown=5\"\n  });\n\n  need += pushEvidenceComponent({\n    accountId,\n    dimension: \"need\",\n    key: \"need_walkthrough_process\",\n    label: \"Walkthrough / assessment workflow opportunity\",\n    evidence: e(\"walkthrough_signal\"),\n    maxPoints: 15,\n    points: scoreLookup(\n      e(\"walkthrough_signal\").evidence_value,\n      {\n        strong: 15,\n        moderate: 12,\n        weak: 6,\n        absent: 0,\n        unknown: 4\n      }\n    ),\n    mappingDescription:\n      \"strong=15, moderate=12, weak=6, absent=0, unknown=4\"\n  });\n\n  need += pushEvidenceComponent({\n    accountId,\n    dimension: \"need\",\n    key: \"need_recurring_sales_complexity\",\n    label: \"Recurring-contract sales-process complexity\",\n    evidence: e(\"recurring_janitorial\"),\n    maxPoints: 10,\n    points: scoreLookup(\n      e(\"recurring_janitorial\").evidence_value,\n      {\n        strong: 10,\n        moderate: 7,\n        weak: 3,\n        absent: 0,\n        unknown: 2\n      }\n    ),\n    mappingDescription:\n      \"strong=10, moderate=7, weak=3, absent=0, unknown=2\"\n  });\n\n  need = round2(need);\n\n  // ==================================================\n  // SIGNAL â€” intentionally unmeasured in V1\n  // ==================================================\n\n  pushAggregateComponent({\n    accountId,\n    dimension: \"signal\",\n    key: \"signal_external_why_now_status\",\n    label: \"External why-now signal coverage\",\n    componentValue: null,\n    maxPoints: 0,\n    points: 0,\n    reasoning:\n      \"Signal is intentionally unmeasured in SC-V1.0.0. Website fit/need evidence is not treated as a why-now signal. Future versions will add time-sensitive signals such as hiring, expansion, advertising activity, recent reviews, technology changes, or location growth.\"\n  });\n\n  // ==================================================\n  // CONFIDENCE â€” 100 points total\n  // ==================================================\n\n  const evidenceRows = EXPECTED_KEYS.map(\n    key => e(key)\n  );\n\n  const knownRows = evidenceRows.filter(\n    row => row.evidence_value !== \"unknown\"\n  );\n\n  const knownRatio =\n    knownRows.length / EXPECTED_KEYS.length;\n\n  const averageEvidenceConfidence =\n    evidenceRows.reduce(\n      (sum, row) =>\n        sum + Number(row.confidence || 0),\n      0\n    ) / evidenceRows.length;\n\n  const traceableKnownRows =\n    knownRows.filter(row => {\n      const ej = row.evidence_json || {};\n      const observed =\n        String(ej.observed_text || \"\").trim();\n\n      return Boolean(\n        row.source_url &&\n        observed\n      );\n    });\n\n  const traceabilityRatio =\n    knownRows.length\n      ? traceableKnownRows.length /\n        knownRows.length\n      : 0;\n\n  const downgradedRows =\n    evidenceRows.filter(row =>\n      row.evidence_json?.validation_status ===\n      \"downgraded_to_unknown\"\n    );\n\n  const integrityRatio =\n    (EXPECTED_KEYS.length -\n      downgradedRows.length) /\n    EXPECTED_KEYS.length;\n\n  let confidenceScore = 0;\n\n  confidenceScore += pushAggregateComponent({\n    accountId,\n    dimension: \"confidence\",\n    key: \"confidence_evidence_coverage\",\n    label: \"Known evidence coverage\",\n    componentValue: knownRatio,\n    maxPoints: 40,\n    points: knownRatio * 40,\n    reasoning:\n      `${knownRows.length}/${EXPECTED_KEYS.length} evidence dimensions are known (not unknown).`\n  });\n\n  confidenceScore += pushAggregateComponent({\n    accountId,\n    dimension: \"confidence\",\n    key: \"confidence_mean_extraction\",\n    label: \"Mean extraction confidence\",\n    componentValue:\n      averageEvidenceConfidence / 100,\n    maxPoints: 30,\n    points:\n      (averageEvidenceConfidence / 100) *\n      30,\n    reasoning:\n      `Mean evidence confidence is ${round2(averageEvidenceConfidence)}/100 across ${EXPECTED_KEYS.length} dimensions.`\n  });\n\n  confidenceScore += pushAggregateComponent({\n    accountId,\n    dimension: \"confidence\",\n    key: \"confidence_source_traceability\",\n    label: \"Source traceability\",\n    componentValue:\n      traceabilityRatio,\n    maxPoints: 20,\n    points:\n      traceabilityRatio * 20,\n    reasoning:\n      `${traceableKnownRows.length}/${knownRows.length || 0} known evidence rows contain both a source URL and observed source text.`\n  });\n\n  confidenceScore += pushAggregateComponent({\n    accountId,\n    dimension: \"confidence\",\n    key: \"confidence_validation_integrity\",\n    label: \"Validation integrity\",\n    componentValue:\n      integrityRatio,\n    maxPoints: 10,\n    points:\n      integrityRatio * 10,\n    reasoning:\n      `${downgradedRows.length}/${EXPECTED_KEYS.length} evidence dimensions were downgraded by deterministic validation.`\n  });\n\n  confidenceScore = round2(\n    confidenceScore\n  );\n\n  summaries.push({\n    account_id: accountId,\n    fit_score: fit,\n    need_score: need,\n    signal_score: null,\n    signal_status: \"unmeasured\",\n    confidence_score: confidenceScore,\n    known_evidence_dimensions:\n      knownRows.length,\n    evidence_dimensions:\n      EXPECTED_KEYS.length,\n    validation_downgrades:\n      downgradedRows.length,\n    rule_version:\n      RULE_VERSION\n  });\n}\n\n// --------------------------------------------------\n// Final invariant checks.\n// --------------------------------------------------\n\nconst EXPECTED_COMPONENTS_PER_ACCOUNT =\n  8 + 5 + 1 + 4;\n\nconst expectedComponentCount =\n  groups.size *\n  EXPECTED_COMPONENTS_PER_ACCOUNT;\n\nif (\n  scoreComponents.length !==\n  expectedComponentCount\n) {\n  throw new Error(\n    `Score component count mismatch. Expected ${expectedComponentCount}, got ${scoreComponents.length}.`\n  );\n}\n\nfor (const summary of summaries) {\n  for (const [name, value] of [\n    [\"fit_score\", summary.fit_score],\n    [\"need_score\", summary.need_score],\n    [\"confidence_score\", summary.confidence_score]\n  ]) {\n    if (\n      value < 0 ||\n      value > 100\n    ) {\n      throw new Error(\n        `${name} out of range for ${summary.account_id}: ${value}`\n      );\n    }\n  }\n}\n\nreturn [\n  {\n    json: {\n      rule_version: RULE_VERSION,\n      research_version:\n        RESEARCH_VERSION,\n      accounts_scored:\n        summaries.length,\n      components_per_account:\n        EXPECTED_COMPONENTS_PER_ACCOUNT,\n      score_component_count:\n        scoreComponents.length,\n      summaries,\n      score_components:\n        scoreComponents\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "0fa6a7f0-d1bf-4dff-b7d7-817534386e89",
+      "name": "Build Deterministic Scores V1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_PROJECT.supabase.co/rest/v1/score_components",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "on_conflict",
+              "value": "account_id,score_dimension,component_key,rule_version"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.score_components }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        624,
+        0
+      ],
+      "id": "681adfc2-6d50-4c1e-9404-6815a7079792",
+      "name": "Supabase Upsert Score Components",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase Service Role"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Fetch Website Evidence V1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Website Evidence V1": {
+      "main": [
+        [
+          {
+            "node": "Build Deterministic Scores V1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Deterministic Scores V1": {
+      "main": [
+        [
+          {
+            "node": "Supabase Upsert Score Components",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "75990926-2421-4b02-948e-92e2f16b73cb",
+  "meta": {},
+  "nodeGroups": [],
+  "tags": []
+}

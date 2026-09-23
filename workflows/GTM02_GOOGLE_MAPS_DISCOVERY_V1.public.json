@@ -1,0 +1,334 @@
+{
+  "name": "GTM 02 - Google Maps Discovery V1 [PUBLIC SANITIZED]",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "677d97e8-b2dd-4cbc-bcb6-cdf7a2a79ec3",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node: Discovery Config - Dallas V1\n// Mode: Run Once for All Items\n//\n// First controlled live discovery batch.\n// Intentionally small. No leads enrichment / contact enrichment.\n\nreturn [\n  {\n    json: {\n      run_type: \"apify_google_maps_discovery\",\n      market: \"US commercial cleaning\",\n      location_query: \"Dallas, Texas, United States\",\n      search_strings: [\n        \"commercial cleaning\",\n        \"janitorial service\"\n      ],\n      max_places_per_search: 20,\n      actor_input: {\n        searchStringsArray: [\n          \"commercial cleaning\",\n          \"janitorial service\"\n        ],\n        locationQuery: \"Dallas, Texas, United States\",\n        maxCrawledPlacesPerSearch: 20,\n        language: \"en\",\n        scrapeSocialMediaProfiles: {\n          facebooks: false,\n          instagrams: false,\n          youtubes: false,\n          tiktoks: false,\n          twitters: false\n        },\n        maximumLeadsEnrichmentRecords: 0\n      }\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "55e36d99-b59b-48d3-8e09-5d5656f1dac9",
+      "name": "Discovery Config - Dallas V1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_PROJECT.supabase.co/rest/v1/processing_runs?select=id,run_type,status,started_at",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    run_type: $json.run_type,\n    status: \"started\",\n    metadata: {\n      market: $json.market,\n      location_query: $json.location_query,\n      search_strings: $json.search_strings,\n      max_places_per_search: $json.max_places_per_search,\n      discovery_provider: \"apify\",\n      actor: \"compass/crawler-google-places\"\n    }\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "ed2a9e59-40eb-4605-ad0e-86d1636304cc",
+      "name": "Create Processing Run",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase Service Role"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/actors/compass~crawler-google-places/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $(\"Discovery Config - Dallas V1\").first().json.actor_input }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        624,
+        0
+      ],
+      "id": "4b1a5d2a-caa0-4ddb-8aa3-ff92ed3a7b0d",
+      "name": "Run Apify Google Maps",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "APIFY_CREDENTIAL_ID",
+          "name": "Apify API Token Placeholder"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node: Map Apify Places to Account Payload V1\n// Mode: Run Once for All Items\n//\n// Accepts either:\n// - one n8n item per Apify place, OR\n// - an item whose JSON value contains an array of places.\n//\n// Outputs provider-neutral account-ingestion records.\n// Deep research/scoring is intentionally NOT done here.\n\nfunction clean(v) {\n  if (v === undefined || v === null) return null;\n  const s = String(v).trim();\n  return s === \"\" ? null : s;\n}\n\nfunction numericOrNull(v) {\n  if (v === undefined || v === null || v === \"\") return null;\n  const n = Number(v);\n  return Number.isFinite(n) ? n : null;\n}\n\nfunction boolOrNull(v) {\n  return typeof v === \"boolean\" ? v : null;\n}\n\nfunction countryFromCode(code) {\n  const c = clean(code);\n  if (!c) return \"United States\";\n  if (c.toUpperCase() === \"US\") return \"United States\";\n  return c;\n}\n\n// Flatten possible response shapes.\nlet places = [];\n\nfor (const item of items) {\n  const value = item.json;\n\n  if (Array.isArray(value)) {\n    places.push(...value);\n  } else if (Array.isArray(value?.data)) {\n    places.push(...value.data);\n  } else {\n    places.push(value);\n  }\n}\n\nreturn places\n  .filter((p) => p && clean(p.title))\n  .map((p) => {\n    const lat = numericOrNull(p.location?.lat ?? p.latitude);\n    const lng = numericOrNull(p.location?.lng ?? p.longitude);\n\n    return {\n      json: {\n        company_name: clean(p.title),\n        website_url: clean(p.website),\n\n        google_maps_url: clean(p.url),\n        country: countryFromCode(p.countryCode),\n        state: clean(p.state),\n        city: clean(p.city),\n        street_address: clean(p.address),\n        postal_code: clean(p.postalCode),\n\n        industry: clean(p.categoryName),\n        primary_category: clean(p.categoryName),\n\n        company_phone: clean(p.phoneUnformatted ?? p.phone),\n        google_rating: numericOrNull(p.totalScore),\n        google_review_count: numericOrNull(p.reviewsCount),\n\n        permanently_closed: boolOrNull(p.permanentlyClosed),\n        temporarily_closed: boolOrNull(p.temporarilyClosed),\n\n        latitude: lat,\n        longitude: lng,\n\n        discovery_source: \"apify_google_maps\",\n        discovery_source_id: clean(p.placeId),\n        source_query: clean(p.searchString),\n\n        // The normalize node preserves this record in source_payload.\n        source_payload: p,\n        is_test_record: false\n      }\n    };\n  });\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "a681210f-7351-4f2c-a689-6622bc9304b9",
+      "name": "Map Apify Places"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node: Normalize Account V1.1\n// Mode: Run Once for All Items\n\nfunction clean(value) {\n  if (value === undefined || value === null) return null;\n  const s = String(value).trim();\n  return s === '' ? null : s;\n}\n\nfunction normalizeCompanyName(value) {\n  const s = clean(value);\n  if (!s) return null;\n\n  return s\n    .toLowerCase()\n    .replace(/&/g, ' and ')\n    .replace(/[^a-z0-9]+/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction normalizeDomain(value) {\n  let s = clean(value);\n  if (!s) return null;\n\n  s = s.trim().toLowerCase();\n  s = s.replace(/^[a-z][a-z0-9+.-]*:\\/\\//i, '');\n  s = s.replace(/^\\/\\//, '');\n  s = s.split(/[/?#]/)[0];\n\n  if (s.includes('@')) s = s.split('@').pop();\n\n  s = s.replace(/:\\d+$/, '');\n  s = s.replace(/^www\\./, '');\n  s = s.replace(/\\.$/, '');\n\n  if (!s || !s.includes('.') || /\\s/.test(s)) return null;\n  return s;\n}\n\nfunction slug(value, fallback) {\n  const s = clean(value);\n  if (!s) return fallback;\n\n  const result = s\n    .toLowerCase()\n    .replace(/&/g, ' and ')\n    .replace(/[^a-z0-9]+/g, '-')\n    .replace(/^-+|-+$/g, '');\n\n  return result || fallback;\n}\n\nfunction numberOrNull(value) {\n  if (value === undefined || value === null || value === '') return null;\n  const n = Number(value);\n  return Number.isFinite(n) ? n : null;\n}\n\nfunction boolOrNull(value) {\n  return typeof value === 'boolean' ? value : null;\n}\n\nreturn items.map((item) => {\n  const r = item.json || {};\n\n  const companyName =\n    clean(r.company_name) ??\n    clean(r.title) ??\n    clean(r.name);\n\n  if (!companyName) {\n    throw new Error('company_name is required for ingestion');\n  }\n\n  const websiteUrl =\n    clean(r.website_url) ??\n    clean(r.website) ??\n    clean(r.url);\n\n  const suppliedDomain = clean(r.domain);\n\n  const normalizedDomain =\n    normalizeDomain(suppliedDomain) ??\n    normalizeDomain(websiteUrl);\n\n  const discoverySource =\n    clean(r.discovery_source) ??\n    'manual';\n\n  const discoverySourceId =\n    clean(r.discovery_source_id) ??\n    clean(r.place_id) ??\n    clean(r.placeId) ??\n    clean(r.source_id);\n\n  const city = clean(r.city);\n  const state = clean(r.state);\n\n  let accountKey;\n\n  if (normalizedDomain) {\n    accountKey = `domain:${normalizedDomain}`;\n  } else if (discoverySourceId) {\n    accountKey =\n      `source:${slug(discoverySource, 'unknown-source')}:${slug(discoverySourceId, 'unknown-id')}`;\n  } else {\n    accountKey =\n      `fallback:${slug(companyName, 'unknown-company')}:${slug(city, 'unknown-city')}:${slug(state, 'unknown-state')}`;\n  }\n\n  return {\n    json: {\n      account_key: accountKey,\n\n      company_name: companyName,\n      normalized_company_name: normalizeCompanyName(companyName),\n\n      domain: normalizedDomain,\n      normalized_domain: normalizedDomain,\n      website_url: websiteUrl,\n\n      linkedin_url: clean(r.linkedin_url),\n      google_maps_url: clean(r.google_maps_url),\n\n      country: clean(r.country) ?? 'United States',\n      state,\n      city,\n      street_address: clean(r.street_address ?? r.address),\n      postal_code: clean(r.postal_code),\n\n      discovery_source: discoverySource,\n      discovery_source_id: discoverySourceId,\n      source_query: clean(r.source_query),\n\n      industry: clean(r.industry),\n      employee_band: clean(r.employee_band),\n      employee_count_estimate: numberOrNull(r.employee_count_estimate),\n      founded_year: numberOrNull(r.founded_year),\n      company_type: clean(r.company_type),\n\n      company_phone: clean(r.company_phone),\n      primary_category: clean(r.primary_category),\n      google_rating: numberOrNull(r.google_rating),\n      google_review_count: numberOrNull(r.google_review_count),\n      permanently_closed: boolOrNull(r.permanently_closed),\n      temporarily_closed: boolOrNull(r.temporarily_closed),\n      latitude: numberOrNull(r.latitude),\n      longitude: numberOrNull(r.longitude),\n\n      qualification_status: 'normalized',\n\n      // Preserve provider-level data for audit/debugging.\n      source_payload: r.source_payload ?? r,\n\n      is_test_record: Boolean(r.is_test_record),\n    },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "225fea5c-59ca-4472-87c6-4aea5c933219",
+      "name": "Normalize Account V1.1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_PROJECT.supabase.co/rest/v1/accounts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "on_conflict",
+              "value": "account_key"
+            },
+            {
+              "name": "select",
+              "value": "id,account_key,company_name,normalized_domain,qualification_status,is_test_record,created_at,updated_at"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1232,
+        0
+      ],
+      "id": "03381f0d-8b09-429b-a403-85eba995decb",
+      "name": "Supabase Upsert Account",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase Service Role"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      processing_run_id: $(\"Create Processing Run\").first().json.id,\n      records_received: $(\"Map Apify Places\").all().length,\n      records_processed: items.length,\n      status: \"success\",\n      completed_at: new Date().toISOString()\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        0
+      ],
+      "id": "34b11708-ca37-4a86-8efc-392f1f6004c7",
+      "name": "Summarize Result"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{   \"https://YOUR_PROJECT.supabase.co/rest/v1/processing_runs?id=eq.\" +   $json.processing_run_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    status: $json.status,\n    records_received: $json.records_received,\n    records_processed: $json.records_processed,\n    completed_at: $json.completed_at\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1648,
+        0
+      ],
+      "id": "f9b47091-fd1c-46c3-a16c-fde1f9bda213",
+      "name": "Complete Processing Run",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase Service Role"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Discovery Config - Dallas V1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discovery Config - Dallas V1": {
+      "main": [
+        [
+          {
+            "node": "Create Processing Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Processing Run": {
+      "main": [
+        [
+          {
+            "node": "Run Apify Google Maps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Apify Google Maps": {
+      "main": [
+        [
+          {
+            "node": "Map Apify Places",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Apify Places": {
+      "main": [
+        [
+          {
+            "node": "Normalize Account V1.1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Account V1.1": {
+      "main": [
+        [
+          {
+            "node": "Supabase Upsert Account",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Upsert Account": {
+      "main": [
+        [
+          {
+            "node": "Summarize Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize Result": {
+      "main": [
+        [
+          {
+            "node": "Complete Processing Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "cb43b0f6-d318-4c78-a533-467c774972cc",
+  "meta": {},
+  "nodeGroups": [],
+  "tags": []
+}

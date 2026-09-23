@@ -1,4 +1,4 @@
--- 006_website_intelligence_pilot_qa.sql
+﻿-- 006_website_intelligence_pilot_qa.sql
 -- Read-only QA queries for WI-V1B pilot.
 
 -- 1. Evidence volume by pilot account.
@@ -10,11 +10,11 @@ left join public.account_evidence e
     on e.account_id = a.id
    and e.research_version = 'WI-V1B.0.0'
 where a.normalized_domain in (
-    'dallascommercialcleaningco.com',
-    'officecleaningdallastx.com',
-    'cwservices.com',
-    'modernmopcleaning.com',
-    'victorylabclean.com'
+    'pilot-company-1.example',
+    'pilot-company-2.example',
+    'pilot-company-3.example',
+    'pilot-company-4.example',
+    'pilot-company-5.example'
 )
 group by a.id, a.company_name
 order by a.company_name;
@@ -58,3 +58,4 @@ where e.research_version = 'WI-V1B.0.0'
 order by a.company_name, e.evidence_key;
 
 -- Expected: zero rows.
+

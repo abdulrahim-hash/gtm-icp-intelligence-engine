@@ -1,0 +1,229 @@
+{
+  "name": "GTM 10 - Reporting & QA V1 [PUBLIC SANITIZED]",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "7cc4b1c9-ccca-4a06-81d6-de1585ab5cb3",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_project01_funnel_report_v1",
+            "rpc_body": "={{ {} }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "a15e0b8f-8fd3-40e6-bed1-40e9fa0f03c3",
+      "name": "Supabase V3 - Funnel Report",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_project01_contact_state_report_v1",
+            "rpc_body": "={{ {} }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "6f040c79-59e6-4eea-af0c-708fdf2ba820",
+      "name": "Supabase V3 - Contact State Report",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -620,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SUPABASE_BROKER_V3_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "rpc_name": "gtm_project01_qa_report_v1",
+            "rpc_body": "={{ {} }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "rpc_name",
+              "displayName": "rpc_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "rpc_body",
+              "displayName": "rpc_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "ad630d7a-bfa9-4744-992c-14f5eef96410",
+      "name": "Supabase V3 - QA Report",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function brokerNode(name, expectedRpc) {\n  const out = $(name).first().json || {};\n\n  if (out.broker !== 'supabase') {\n    throw new Error(`${name}: expected supabase broker`);\n  }\n  if (out.broker_version !== 'SB-BROKER-V3.0.0') {\n    throw new Error(`${name}: expected SB-BROKER-V3.0.0, got ${out.broker_version}`);\n  }\n  if (out.rpc_name !== expectedRpc) {\n    throw new Error(`${name}: RPC mismatch ${out.rpc_name}`);\n  }\n  return Array.isArray(out.response) ? out.response : [];\n}\n\nconst funnelRows = brokerNode(\n  'Supabase V3 - Funnel Report',\n  'gtm_project01_funnel_report_v1'\n);\nconst contactRows = brokerNode(\n  'Supabase V3 - Contact State Report',\n  'gtm_project01_contact_state_report_v1'\n);\nconst qaRows = brokerNode(\n  'Supabase V3 - QA Report',\n  'gtm_project01_qa_report_v1'\n);\n\nif (funnelRows.length !== 1) {\n  throw new Error(`GTM 10 expected one funnel report, got ${funnelRows.length}`);\n}\nif (qaRows.length !== 1) {\n  throw new Error(`GTM 10 expected one QA report, got ${qaRows.length}`);\n}\nif (contactRows.length !== 7) {\n  throw new Error(`GTM 10 expected 7 contact-state rows, got ${contactRows.length}`);\n}\n\nconst funnel = funnelRows[0];\nconst qa = qaRows[0];\n\nconst counts = qa.counts || {};\n\nconst contactChecks = {\n  all_crm_linked:\n    contactRows.every(x => Boolean(x.hubspot_external_contact_id)),\n  all_queued:\n    contactRows.every(x => x.lifecycle_stage === 'queued'),\n  all_planned:\n    contactRows.every(x => x.outreach_task_status === 'planned'),\n  all_zero_attempt:\n    contactRows.every(x => Number(x.outreach_attempt_count) === 0),\n  all_pending:\n    contactRows.every(x => x.message_approval_status === 'pending'),\n  all_send_blocked:\n    contactRows.every(x => x.send_ready === false)\n};\n\nconst expected =\n  funnel.report_version === 'QA-V1.0.0' &&\n  qa.qa_version === 'QA-V1.0.0' &&\n  qa.state === 'PRE_SEND_CONTROLLED' &&\n  qa.all_checks_pass === true &&\n\n  Number(counts.contacts_total) === 7 &&\n  Number(counts.outbound_ready_total) === 7 &&\n  Number(counts.hubspot_links) === 7 &&\n  Number(counts.distinct_hubspot_ids) === 7 &&\n  Number(counts.outreach_tasks) === 7 &&\n  Number(counts.planned_tasks) === 7 &&\n  Number(counts.total_attempts) === 0 &&\n  Number(counts.tasks_with_provider_message) === 0 &&\n  Number(counts.active_renders) === 7 &&\n  Number(counts.pending_renders) === 7 &&\n  Number(counts.send_ready_rows) === 0 &&\n  Number(counts.queued_rows) === 7 &&\n  Number(counts.provider_events) === 0 &&\n  Number(counts.reply_events) === 0 &&\n  Number(counts.active_suppressions) === 0 &&\n\n  Object.values(contactChecks).every(Boolean);\n\nif (!expected) {\n  throw new Error('GTM 10 final QA invariants did not match PRE_SEND_CONTROLLED baseline');\n}\n\nreturn [{\n  json: {\n    gtm10_reporting_qa_completed: true,\n\n    broker_workflow_id: 'SUPABASE_BROKER_V3_WORKFLOW_ID',\n    broker_version: 'SB-BROKER-V3.0.0',\n\n    report_version: funnel.report_version,\n    qa_version: qa.qa_version,\n    qa_state: qa.state,\n    qa_all_checks_pass: qa.all_checks_pass,\n\n    scored_accounts: Number(funnel.accounts?.scored_account_rows ?? 0),\n    contact_eligible_accounts: Number(funnel.accounts?.contact_eligible_account_rows ?? 0),\n\n    canonical_contacts: Number(funnel.contacts?.canonical_contacts ?? 0),\n    outbound_ready_contacts: Number(funnel.contacts?.outbound_ready_contacts ?? 0),\n\n    hubspot_links: Number(funnel.crm?.hubspot_links ?? 0),\n\n    outreach_tasks: Number(funnel.outreach?.tasks_total ?? 0),\n    outreach_attempts: Number(funnel.outreach?.total_attempts ?? 0),\n\n    pending_message_renders: Number(funnel.messages?.pending_renders ?? 0),\n    send_ready_rows: Number(funnel.messages?.send_ready_rows ?? 0),\n\n    queued_contacts: Number(funnel.lifecycle?.queued ?? 0),\n\n    provider_events: Number(funnel.events?.provider_events ?? 0),\n    reply_events: Number(funnel.events?.reply_events ?? 0),\n    active_suppressions: Number(funnel.events?.active_suppressions ?? 0),\n\n    smtp2go_live_enabled: Boolean(funnel.provider?.smtp2go_live_enabled),\n\n    contact_state_rows: contactRows.length,\n    contact_checks: contactChecks,\n\n    credentials_required_in_parent: false,\n\n    gtm10_all_checks_pass: true,\n\n    next_stage:\n      'Run final system audit, consolidate GTM 05/06, archive engineering-history workflows, and package Project 01 for portfolio/GitHub.'\n  }\n}];"
+      },
+      "id": "0490cce1-5e61-4a98-863b-d873f7c42546",
+      "name": "GTM 10 Final Reporting and QA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - Funnel Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Funnel Report": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - Contact State Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - Contact State Report": {
+      "main": [
+        [
+          {
+            "node": "Supabase V3 - QA Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase V3 - QA Report": {
+      "main": [
+        [
+          {
+            "node": "GTM 10 Final Reporting and QA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "8af66af7-d62e-4e62-b688-e2388c7fdcc1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

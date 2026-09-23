@@ -1,0 +1,139 @@
+{
+  "name": "GTM UTIL - HubSpot API Broker V2 [PUBLIC SANITIZED]",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "operation"
+            },
+            {
+              "name": "contact_email"
+            },
+            {
+              "name": "contact_id"
+            },
+            {
+              "name": "payload"
+            }
+          ]
+        }
+      },
+      "id": "64d57c22-515f-4993-b901-4048ef693508",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -760,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\n\nconst allowed = new Set([\n  'read_contact_by_id',\n  'create_contact',\n  'update_contact_by_id',\n  'search_contact_by_email',\n  'batch_read_contact_by_email'\n]);\n\nconst operation = String(input.operation || '').trim();\n\nif (!allowed.has(operation)) {\n  throw new Error(`HubSpot broker rejected operation: ${operation}`);\n}\n\nconst base = 'https://api.hubapi.com';\nconst version = '2026-09';\n\nconst defaultProperties = [\n  'email',\n  'firstname',\n  'lastname',\n  'company',\n  'jobtitle',\n  'saray_gtm_contact_key',\n  'saray_gtm_account_id',\n  'saray_gtm_persona',\n  'saray_linkedin_url'\n];\n\nlet method = null;\nlet url = null;\nlet body = null;\n\nif (operation === 'read_contact_by_id') {\n  const id = String(input.contact_id || '').trim();\n\n  if (!id) {\n    throw new Error('HubSpot broker requires contact_id for read_contact_by_id');\n  }\n\n  method = 'GET';\n\n  // Put properties directly into the URL. This avoids n8n dynamic-query\n  // toggling dropping the properties parameter on GET.\n  const propCsv = defaultProperties.join(',');\n  url =\n    `${base}/crm/objects/${version}/contacts/${encodeURIComponent(id)}` +\n    `?properties=${encodeURIComponent(propCsv)}`;\n}\n\nif (operation === 'create_contact') {\n  const payload = input.payload;\n\n  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {\n    throw new Error('HubSpot broker requires object payload for create_contact');\n  }\n\n  method = 'POST';\n  url = `${base}/crm/objects/${version}/contacts`;\n  body = payload;\n}\n\nif (operation === 'update_contact_by_id') {\n  const id = String(input.contact_id || '').trim();\n  const payload = input.payload;\n\n  if (!id) {\n    throw new Error('HubSpot broker requires contact_id for update_contact_by_id');\n  }\n  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {\n    throw new Error('HubSpot broker requires object payload for update_contact_by_id');\n  }\n\n  method = 'PATCH';\n  url = `${base}/crm/objects/${version}/contacts/${encodeURIComponent(id)}`;\n  body = payload;\n}\n\nif (operation === 'search_contact_by_email') {\n  const email = String(input.contact_email || '').trim().toLowerCase();\n\n  if (!email || !email.includes('@')) {\n    throw new Error('HubSpot broker requires contact_email for search_contact_by_email');\n  }\n\n  method = 'POST';\n  url = `${base}/crm/objects/${version}/contacts/search`;\n  body = {\n    filterGroups: [\n      {\n        filters: [\n          {\n            propertyName: 'email',\n            operator: 'EQ',\n            value: email\n          }\n        ]\n      }\n    ],\n    properties: defaultProperties,\n    limit: 2\n  };\n}\n\nif (operation === 'batch_read_contact_by_email') {\n  const email = String(input.contact_email || '').trim().toLowerCase();\n\n  if (!email || !email.includes('@')) {\n    throw new Error('HubSpot broker requires contact_email for batch_read_contact_by_email');\n  }\n\n  method = 'POST';\n  url = `${base}/crm/objects/${version}/contacts/batch/read`;\n  body = {\n    inputs: [{ id: email }],\n    properties: defaultProperties,\n    propertiesWithHistory: [],\n    idProperty: 'email'\n  };\n}\n\nreturn [{\n  json: {\n    broker_version: 'HS-BROKER-V2.0.0',\n    operation,\n    method,\n    url,\n    body\n  }\n}];"
+      },
+      "id": "8ff0764e-bd7f-4c15-97f5-d48ad2aaad05",
+      "name": "Validate and Route HubSpot Operation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.method }}",
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": "={{ $json.body !== null }}",
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body === null ? '' : JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "id": "9b6b8fbe-1d9e-4042-ad40-a7ad1f4e3201",
+      "name": "HubSpot API - Credential Lives Here",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -280,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Validate and Route HubSpot Operation').first().json;\nconst response = $input.first().json;\n\nreturn [{\n  json: {\n    broker: 'hubspot',\n    broker_version: req.broker_version,\n    operation: req.operation,\n    response\n  }\n}];"
+      },
+      "id": "37354ce4-fa5f-4da0-add0-f6f63a8b9500",
+      "name": "Return HubSpot Broker Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Validate and Route HubSpot Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Route HubSpot Operation": {
+      "main": [
+        [
+          {
+            "node": "HubSpot API - Credential Lives Here",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot API - Credential Lives Here": {
+      "main": [
+        [
+          {
+            "node": "Return HubSpot Broker Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "448e9d66-3b87-4c38-873a-861e85f8b1a1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

@@ -1,0 +1,23 @@
+flowchart LR
+A[GTM01 Account Ingestion] --> B[GTM02 Discovery]
+B --> C[GTM03 Website Intelligence]
+C --> D[GTM04 Deterministic Scoring]
+D --> E[GTM05 Contact Acquisition]
+E --> F[GTM06 Verified Email Enrichment]
+F --> G[GTM07 CRM Handoff]
+G --> H[GTM08 Outreach Orchestration]
+H --> I[GTM09 Lifecycle & Replies]
+I --> J[GTM10 Reporting & QA]
+S[(Supabase/Postgres)]
+SB[Supabase RPC Broker V3]
+HB[HubSpot API Broker V2]
+EB[SMTP2GO Email Broker V1]
+E --- SB
+F --- SB
+G --- SB
+H --- SB
+I --- SB
+J --- SB
+SB --- S
+G --- HB
+H --- EB

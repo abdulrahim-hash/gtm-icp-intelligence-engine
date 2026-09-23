@@ -1,160 +1,103 @@
-# Commercial Cleaning GTM Intelligence Engine
+# GTM ICP Intelligence Engine
 
-**Status:** Project 01 — build phase  
-**Commercial offer (working):** RepFlow / Saray commercial-cleaning GTM vertical  
-**Type:** Real-world GTM Engineering portfolio project + live customer-acquisition experiment  
-**Geography:** United States  
-**Vertical:** Commercial cleaning / janitorial services
+**An auditable account-to-outreach control plane for B2B GTM workflows.**
 
-## One-line summary
+This project demonstrates a production-style GTM Engineering system that moves accounts through:
 
-A vendor-agnostic GTM system that discovers US commercial-cleaning companies, researches and qualifies them, scores Fit / Need / Signal / Confidence, identifies decision-makers, routes qualified prospects into outbound and GoHighLevel, and measures real commercial results.
+**discovery → website intelligence → deterministic scoring → contact acquisition → identity resolution → verified enrichment → CRM synchronization → controlled outreach → lifecycle handling → reporting & QA**
 
-## Why this project exists
+The objective was not to build another linear automation. The objective was to build a system with explicit contracts, provider abstraction, idempotency, auditability, retry semantics, suppression controls, and human approval gates.
 
-This is not a tutorial build. The project has two simultaneous objectives:
+> **Current state:** validated pre-send pilot. Live outbound remains intentionally disabled.
 
-1. build a real acquisition engine capable of winning commercial-cleaning CRM/GTM customers; and
-2. create inspectable evidence of GTM Engineering capability for employers.
+## What the pilot validated
 
-Every major decision follows:
+| Metric | Validated state |
+|---|---:|
+| Scored accounts | 39 |
+| Fully measured pilot accounts | 5 |
+| Canonical decision-maker contacts | 7 |
+| Identity aliases | 28 |
+| Verified email contacts | 7 |
+| HubSpot mappings | 7 |
+| Planned outreach tasks | 7 |
+| Real outreach attempts | 0 |
+| Provider message IDs | 0 |
+| Active suppressions | 0 |
+| SMTP2GO live sending | Disabled |
 
-**Problem → hypothesis → evidence → decision → implementation → test → finding → iteration → result**
+The final baseline passed the full audit under `QA-V1.0.0` and `FINAL-AUDIT-V1.0.0` in state `PRE_SEND_CONTROLLED`.
 
-## Commercial offer
+## Architecture
 
-The service is not based on reselling locked GHL sub-accounts.
+```mermaid
+flowchart LR
+    A[GTM 01\nAccount Ingestion] --> B[GTM 02\nDiscovery]
+    B --> C[GTM 03\nWebsite Intelligence]
+    C --> D[GTM 04\nDeterministic Scoring]
+    D --> E[GTM 05\nContact Acquisition]
+    E --> F[GTM 06\nVerified Email Enrichment]
+    F --> G[GTM 07\nCRM Handoff]
+    G --> H[GTM 08\nOutreach Orchestration]
+    H --> I[GTM 09\nLifecycle & Replies]
+    I --> J[GTM 10\nReporting & QA]
 
-The preferred model is:
+    S[(Supabase\nCanonical State)]
+    HS[HubSpot API Broker]
+    SB[Supabase RPC Broker]
+    EM[Email Provider Broker]
 
-- the client controls its CRM environment and business data;
-- we implement the revenue system in that environment;
-- we document the workflows and integrations;
-- the client retains administrative control;
-- we can remain as an optional CRM / revenue-systems manager because we continue creating operational value.
-
-### Initial productized service
-
-**Commercial Cleaning Lead-to-Contract System**
-
-Typical scope:
-
-- lead capture and source attribution;
-- immediate response;
-- missed-call recovery;
-- qualification and routing;
-- walkthrough / estimate booking;
-- opportunity pipeline;
-- quote/proposal follow-up;
-- dormant-opportunity reactivation;
-- integrations;
-- reporting;
-- selected AI automations;
-- optional ongoing CRM operations.
-
-RepFlow/Saray owns the **revenue layer**, not necessarily field-service operations such as crew scheduling, payroll, route planning, inspections, or job costing.
-
-## Project 01 objective
-
-Answer:
-
-> Which US commercial-cleaning companies are most likely to need and purchase our lead-to-contract CRM/revenue-system service?
-
-Then turn that intelligence into a real outbound cohort and measure what happens.
-
-## Current architecture
-
-```text
-Account discovery
-      ↓
-n8n ingestion
-      ↓
-Supabase / Postgres source of truth
-      ↓
-Normalization + deduplication
-      ↓
-Hard ICP gates
-      ↓
-Website / public-web research
-      ↓
-FIT score
-      ↓
-NEED score
-      ↓
-SIGNAL score
-      ↓
-CONFIDENCE score
-      ↓
-Account tier
-      ↓
-Decision-maker discovery
-      ↓
-Contact verification
-      ↓
-Outbound
-      ↓
-GoHighLevel pipeline
-      ↓
-Replies / meetings / opportunities / customers
+    E --- SB
+    F --- SB
+    G --- SB
+    H --- SB
+    I --- SB
+    J --- SB
+    G --- HS
+    H --- EM
+    SB --- S
 ```
 
-### Core stack
+## Engineering principles
 
-| Layer | Current choice |
-|---|---|
-| Account discovery | Apify / Google Maps and other replaceable sources |
-| Orchestration | n8n |
-| Source of truth | Supabase / Postgres |
-| Research | Company websites + public web + LLM-assisted extraction |
-| Scoring | Deterministic code / SQL using structured evidence |
-| Contact discovery | Provider-agnostic; Hunter/Apollo/public sources as needed |
-| CRM | GoHighLevel |
-| Version control | GitHub |
-| Documentation | Markdown + architecture diagrams + experiment logs |
+- **Supabase is canonical.** CRM and provider systems are adapters, not the source of truth.
+- **Provider calls are auditable attempts.** Once a real provider call occurs, the attempt cannot be erased or silently reset.
+- **Idempotency is designed into task keys, payload hashes, run keys, CRM mappings, and event ingestion.**
+- **Contact identity is conservative.** Provider ID → LinkedIn → verified email → account-scoped fallback.
+- **Verified email only.** Mobile enrichment is intentionally disabled.
+- **Outreach is fail-closed.** Eligibility, suppression, approval, and provider-live checks happen immediately before dispatch.
+- **Human approval remains part of the system.**
+- **Retries preserve history.** A 429/5xx becomes retryable; it does not become “as if the call never happened.”
+- **Public artifacts are sanitized.**
 
-**Clay is not a production dependency.** It remains documented as an evaluated prototype/tool.
+## Repository map
 
-## Scoring architecture
+- `docs/` — architecture, contracts, testing, failure recovery, full case study
+- `workflows/` — sanitized reference exports
+- `evidence/` — public baseline and validation matrix
+- `portfolio/` — resume bullets, interview talking points, Loom script
+- `screenshots/` — redaction/publishing plan
+- `scripts/prepublish_scan.py` — simple public-repo secret scan
 
-The system separates four questions:
+## Workflow status
 
-1. **Fit** — is this structurally the kind of cleaning company we serve?
-2. **Need** — does the company appear to have a revenue-system gap we can improve?
-3. **Signal** — is there evidence that makes the account more relevant now?
-4. **Confidence** — how trustworthy and complete is the evidence?
+This bundle includes sanitized reference exports for the complete canonical workflow set:
 
-LLMs may extract or normalize evidence, but the final score should be reproducible rather than an unexplained AI number.
+- **GTM01–GTM10**
+- **Supabase RPC Broker V3 FINAL**
+- **HubSpot API Broker V2**
+- **SMTP2GO Email Broker V1**
 
-## Portfolio evidence
+These are intentionally sanitized portfolio references rather than drop-in production exports.
 
-The finished project should contain:
+## Tech stack
 
-- Git history showing incremental development;
-- research and source register;
-- ICP specification;
-- architecture diagrams;
-- Supabase schema;
-- n8n workflow exports with secrets removed;
-- scoring specification;
-- account and contact data model;
-- experiment logs;
-- QA / test evidence;
-- real outbound cohort;
-- observed response/meeting/customer results;
-- cost metrics;
-- short Loom walkthrough;
-- final case study.
+n8n · Supabase/Postgres · HubSpot · Prospeo · SMTP2GO · HTTP APIs · deterministic scoring · provider abstraction · audit ledgers · idempotency contracts
 
-## Claims policy
+## Why this project matters
 
-Only measured results may be reported. We will not invent pipeline, meetings, revenue, accuracy, ROI, or customer outcomes.
+Most GTM automations optimize for “did the workflow run?”
 
-## Current state
+This system instead asks whether the account was eligible, why the contact was selected, whether a provider credit was spent, whether a CRM write already happened, whether outreach is still safe, and whether the system can prove what happened after partial failure.
 
-Day-1 research and the first tooling experiment are complete.
-
-The next production milestone is:
-
-**Supabase schema + n8n ingestion + first real account-discovery batch.**
-
-See `CURRENT_STATE.md`.
+That is the distinction between a workflow and a GTM control plane.
